@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#061426" />
+    <meta name="description" content="EPBF Pocket Billiards app demo" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EPBF" />
+    <title>EPBF · Pocket Billiards</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="assets/epbf-icon.png" />
+    <link rel="icon" type="image/png" href="assets/epbf-icon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="phone" id="app">
+      <section class="splash" id="splash">
+        <div class="splash-top">
+          <button
+            class="lang-button"
+            data-language-toggle
+            aria-label="Language"
+          >
+            ◎ <span data-language-label>NL</span>⌄
+          </button>
+        </div>
+        <!-- Logo's en teksten staan al in de achtergrondafbeelding -->
+        
+<div class="splash-actions">
+
+  <button class="entry primary" data-mode="spectator">
+    <span class="entry-icon">
+      <i data-lucide="eye"></i>
+    </span>
+
+    <span>
+      <strong data-i18n="spectator">Kijker</strong>
+      <small data-i18n="spectatorSubtitle">
+        Volg live, rankings en toernooien
+      </small>
+    </span>
+  </button>
+
+  <button class="entry secondary" data-mode="player">
+    <span class="entry-icon">
+      <i data-lucide="user-round"></i>
+    </span>
+
+    <span>
+      <strong data-i18n="player">Speler</strong>
+      <small data-i18n="playerSubtitle">
+        Persoonlijk profiel en wedstrijden
+      </small>
+    </span>
+  </button>
+
+</div>
+
+      </section>
+      <section class="main hidden" id="main">
+        <header class="topbar">
+          <button class="back-header hidden" id="back" aria-label="Back">
+            ‹</button
+          ><button class="brand" id="brand" aria-label="Home">
+            <img src="assets/epbf-icon.png" alt="" /><span
+              ><strong>EPBF</strong><small id="mode-label">Kijker</small></span
+            ></button
+          ><button
+            class="lang-button"
+            data-language-toggle
+            aria-label="Language"
+          >
+            ◎ <span data-language-label>NL</span>⌄
+          </button>
+        </header>
+        <div class="content" id="content"></div>
+        <nav class="bottom-nav" id="nav" aria-label="Main navigation"></nav>
+      </section>
+      <div class="language-overlay hidden" id="language-overlay">
+        <div class="language-panel" id="language-panel"></div>
+      </div>
+    </div>
+    <script src="translations.js"></script>
+    <script src="language.js"></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script src="app.js"></script>
+  </body>
+</html>

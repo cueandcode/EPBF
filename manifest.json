@@ -1,0 +1,18 @@
+{
+  "name": "EPBF",
+  "short_name": "EPBF",
+  "description": "European Pocket Billiard Federation",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#061426",
+  "theme_color": "#061426",
+  "icons": [
+    {
+      "src": "assets/epbf-icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
