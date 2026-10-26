@@ -151,12 +151,12 @@ input:focus-visible {
   background: #041222;
 }
 .topbar {
-  height: 70px;
+  height: calc(70px + env(safe-area-inset-top, 0px));
   flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 12px;
   background: #06182b;
   border-bottom: 1px solid #18354b;
 }
@@ -790,7 +790,7 @@ input:focus-visible {
 .language-panel {
   position: absolute;
   right: 13px;
-  top: 62px;
+  top: calc(62px + env(safe-area-inset-top, 0px));
   width: 205px;
   background: #081b30;
   border: 1px solid #244760;
@@ -1257,3 +1257,50 @@ button.info-card.epbf-discipline-card:active {
   background-color: transparent !important;
   object-fit: contain;
 }
+/* Officiele EPBF spelersfiche */
+.epbf-player-link { display:inline; border:0; padding:0; background:none; color:inherit; font:inherit; text-align:inherit; cursor:pointer; text-decoration:underline; text-decoration-color:#2d8b7a; text-underline-offset:3px; }
+.epbf-player-link:hover { color:#35e89b; }
+.epbf-person-row .epbf-player-link.person-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.epbf-profile-status { margin:12px 0; color:#b4cbda; font-size:12px; }
+.epbf-profile-tournament { margin:10px 0; border:1px solid #21445e; border-radius:12px; background:#0d253b; overflow:hidden; }
+.epbf-profile-toggle { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; background:transparent; color:#fff; text-align:left; padding:14px; }
+.epbf-profile-toggle span:first-child { min-width:0; }
+.epbf-profile-toggle strong, .epbf-profile-toggle small { display:block; overflow-wrap:anywhere; }
+.epbf-profile-toggle strong { font-size:13px; line-height:1.4; }
+.epbf-profile-toggle small { margin-top:5px; font-size:11px; color:#b4cbda; }
+.epbf-profile-matches { padding:0 13px 8px; border-top:1px solid #21445e; }
+.epbf-profile-matches p { font-size:12px; color:#b4cbda; }
+.epbf-profile-match { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid #1b3a52; }
+.epbf-profile-match:last-child { border-bottom:0; }
+.epbf-profile-match span { min-width:0; }
+.epbf-profile-match small, .epbf-profile-match strong { display:block; }
+.epbf-profile-match small { color:#a5bdce; font-size:10px; margin-bottom:4px; }
+.epbf-profile-match strong { font-size:12px; overflow-wrap:anywhere; }
+.epbf-profile-match b { white-space:nowrap; font-size:15px; }
+.epbf-result-win { color:#21e98a; }
+.epbf-result-loss { color:#ff7b7b; }
+
+/* EPBF spelersfiche: scherm tijdens het ophalen van alle batches */
+.epbf-profile-loading {
+  min-height: 48vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 30px 18px;
+  text-align: center;
+  color: #e9f5ff;
+}
+.epbf-profile-loading h2 { margin: 5px 0 0; font-size: 18px; }
+.epbf-profile-loading p { margin: 0; font-size: 12px; line-height: 1.6; color: #b5cbdc; }
+.epbf-profile-loading small { color: #22ed89; font-size: 12px; font-weight: 700; }
+.epbf-profile-spinner {
+  width: 39px; height: 39px;
+  border: 3px solid #244760;
+  border-top-color: #00e77b;
+  border-radius: 50%;
+  animation: epbf-profile-spin .8s linear infinite;
+}
+@keyframes epbf-profile-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .epbf-profile-spinner { animation: none; } }
