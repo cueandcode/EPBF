@@ -1384,31 +1384,85 @@ function isChampionshipOverview(event) {
 
     function epbfProfileState(id) {
       if (!epbfProfileCache.has(id)) epbfProfileCache.set(id, {
-        playerName: "", totalTournaments: null, tournaments: [], nextOffset: 0, error: "", loading: false
+        playerName: "", totalTournaments: null, tournaments: [], nextOffset: 0,
+        error: "", loading: false, baseLoading: false, baseLoaded: false,
+        baseError: "", started: false
       });
       return epbfProfileCache.get(id);
     }
 
+    function epbfProfileRefresh(id) {
+      if (detail?.type !== "epbf-player" || Number(detail.id) !== id) return;
+      const content = $("#content");
+      const scroll = content?.scrollTop || 0;
+      render();
+      if (content) content.scrollTop = scroll;
+    }
+
+    function epbfTournamentKey(tournament) {
+      return `${tournament.category || ""}:${tournament.eventId ?? tournament.id ?? ""}`;
+    }
+
+    // Haal de lichte spelersfiche eerst op. De zware wedstrijdstatistieken
+    // worden vervolgens in de achtergrond per vier toernooien verwerkt.
+    async function loadEPBFProfileBase(id) {
+      const state = epbfProfileState(id);
+      if (state.baseLoading || state.baseLoaded) return;
+      state.baseLoading = true;
+      state.baseError = "";
+      try {
+        const response = await fetch(`${EPBF_PLAYER_API}/${id}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data?.success || !Array.isArray(data.tournaments)) {
+          throw new Error("Ongeldige EPBF-spelersfiche");
+        }
+        state.playerName = data.playerName || data.player?.name || data.name || state.playerName;
+        state.totalTournaments = data.totalTournaments ?? data.tournaments.length;
+        const detailed = new Map(state.tournaments.map(t => [epbfTournamentKey(t), t]));
+        state.tournaments = data.tournaments.map(t => {
+          const previous = detailed.get(epbfTournamentKey(t));
+          return previous ? { ...t, ...previous } : t;
+        });
+        state.baseLoaded = true;
+      } catch (error) {
+        // Een fout in de lichte fiche mag de bestaande stats-route niet blokkeren.
+        state.baseError = String(error?.message || error);
+        console.error("EPBF player base:", error);
+      } finally {
+        state.baseLoading = false;
+        epbfProfileRefresh(id);
+        loadEPBFProfilePage(id);
+      }
+    }
+
     async function loadEPBFProfilePage(id) {
       const state = epbfProfileState(id);
-      if (state.loading || state.nextOffset === null) return;
+      if (state.loading || state.baseLoading || state.nextOffset === null) return;
       const offset = state.nextOffset;
       const key = `${id}:${offset}`;
       if (epbfProfileRequests.has(key)) return;
       epbfProfileRequests.add(key);
       state.loading = true;
       state.error = "";
+      epbfProfileRefresh(id);
       try {
-        const response = await fetch(`${EPBF_PLAYER_API}/${id}/stats?offset=${offset}`, {cache: "no-store"});
+        const response = await fetch(`${EPBF_PLAYER_API}/${id}/stats?offset=${offset}`, { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (!data.success || !Array.isArray(data.tournaments)) throw new Error("Ongeldig EPBF-antwoord");
         state.playerName = data.playerName || state.playerName;
-        state.totalTournaments = data.totalTournaments;
-        const ids = new Set(state.tournaments.map(x => `${x.category}:${x.eventId}`));
+        state.totalTournaments = data.totalTournaments ?? state.totalTournaments;
+        const indices = new Map(state.tournaments.map((t, i) => [epbfTournamentKey(t), i]));
         for (const tournament of data.tournaments) {
-          const key = `${tournament.category}:${tournament.eventId}`;
-          if (!ids.has(key)) { state.tournaments.push(tournament); ids.add(key); }
+          const tournamentKey = epbfTournamentKey(tournament);
+          if (indices.has(tournamentKey)) {
+            const i = indices.get(tournamentKey);
+            state.tournaments[i] = { ...state.tournaments[i], ...tournament };
+          } else {
+            indices.set(tournamentKey, state.tournaments.length);
+            state.tournaments.push(tournament);
+          }
         }
         state.nextOffset = data.nextOffset;
       } catch (error) {
@@ -1416,14 +1470,8 @@ function isChampionshipOverview(event) {
       } finally {
         state.loading = false;
         epbfProfileRequests.delete(key);
-        if (detail?.type === "epbf-player" && Number(detail.id) === id) {
-          const content = $("#content");
-          const scroll = content?.scrollTop || 0;
-          render();
-          if (content) content.scrollTop = scroll;
-        }
-        // Automatisch de volgende batch laden, zonder parallelle Worker-verzoeken.
-        // Bij fouten stoppen we en tonen we een knop om opnieuw te proberen.
+        epbfProfileRefresh(id);
+        // Stop bij fouten: opnieuw proberen gebeurt uitsluitend na een klik.
         if (!state.error && state.nextOffset !== null) {
           Promise.resolve().then(() => loadEPBFProfilePage(id));
         }
@@ -1432,22 +1480,9 @@ function isChampionshipOverview(event) {
 
     function renderEPBFPlayerDetail(id) {
       const state = epbfProfileState(id);
-      if (!state.loading && !state.tournaments.length && !state.error && state.nextOffset !== null) {
-        // De aanvraag begint na de huidige render, zodat de laadstatus zichtbaar is.
-        Promise.resolve().then(() => loadEPBFProfilePage(id));
-      }
-      // Toon pas een spelersfiche wanneer de volledige historiek binnen is.
-      // Tijdens het ophalen blijft de interface rustig en duidelijk.
-      if (state.nextOffset !== null && !state.error) {
-        const count = state.tournaments.length;
-        const total = state.totalTournaments;
-        return `${detailBack(t("players"))}
-          <div class="epbf-profile-loading" role="status" aria-live="polite">
-            <div class="epbf-profile-spinner" aria-hidden="true"></div>
-            <h2>Spelersgegevens laden…</h2>
-            <p>De volledige toernooihistoriek en wedstrijdresultaten worden opgehaald.</p>
-            ${total !== null ? `<small>${count} van ${total} toernooien verwerkt</small>` : `<small>Even geduld…</small>`}
-          </div>`;
+      if (!state.started) {
+        state.started = true;
+        Promise.resolve().then(() => loadEPBFProfileBase(id));
       }
       const played = state.tournaments.reduce((n, x) => n + (x.stats?.played || 0), 0);
       const wins = state.tournaments.reduce((n, x) => n + (x.stats?.wins || 0), 0);
@@ -1455,38 +1490,44 @@ function isChampionshipOverview(event) {
       const unknown = state.tournaments.reduce((n, x) => n + (x.matches || []).filter(m => m.result === "unknown").length, 0);
       const allLoaded = state.nextOffset === null;
       const heading = state.playerName || `EPBF-speler #${id}`;
+      const loadedStats = state.tournaments.filter(x => x.stats || Array.isArray(x.matches) || x.status).length;
       return `${detailBack(t("players"))}
         <div class="profile-hero"><div class="portrait large"><i data-lucide="user-round"></i></div>
           <div><h1>${safe(heading)}</h1><p>EPBF ID ${id}</p></div></div>
-        <div class="epbf-profile-status">${allLoaded ? "Volledige beschikbare historiek" : `Gedeeltelijke historiek · ${state.tournaments.length} van ${state.totalTournaments ?? "…"} toernooien geladen`}</div>
+        <div class="epbf-profile-status">${state.baseLoading && !state.tournaments.length
+          ? "Toernooihistoriek laden…"
+          : allLoaded ? "Volledige beschikbare wedstrijdstatistieken"
+          : `Wedstrijdstatistieken worden op de achtergrond geladen · ${loadedStats} van ${state.totalTournaments ?? "…"} toernooien`}</div>
         <div class="stats-grid">
-          <div><strong>${state.tournaments.length}${allLoaded ? "" : "+"}</strong><small>Toernooien geladen</small></div>
-          <div><strong>${played}</strong><small>Wedstrijden met uitslag</small></div>
+          <div><strong>${state.totalTournaments ?? state.tournaments.length}</strong><small>Toernooien</small></div>
+          <div><strong>${played}</strong><small>Wedstrijden verwerkt</small></div>
           <div><strong>${wins}</strong><small>Gewonnen</small></div>
           <div><strong>${losses}</strong><small>Verloren</small></div>
         </div>
-        <div class="epbf-profile-status">Winstpercentage: ${played ? (100 * wins / played).toFixed(1).replace(".", ",") + "%" : "–"}${unknown ? ` · ${unknown} wedstrijd(en) zonder uitslag` : ""}</div>
+        <div class="epbf-profile-status">${allLoaded ? "Winstpercentage" : "Voorlopig winstpercentage"}: ${played ? (100 * wins / played).toFixed(1).replace(".", ",") + "%" : "–"}${unknown ? ` · ${unknown} wedstrijd(en) zonder uitslag` : ""}</div>
         <h2 class="group-title">Toernooihistoriek</h2>
         ${state.tournaments.map(x => {
-          const key = `${id}:${x.eventId}`;
+          const key = `${id}:${x.eventId ?? x.id}`;
           const expanded = epbfProfileExpanded.has(key);
           const matchList = Array.isArray(x.matches) ? x.matches : [];
+          const hasDetails = x.status || x.stats || Array.isArray(x.matches);
           return `<div class="epbf-profile-tournament">
             <button class="epbf-profile-toggle" data-epbf-expand="${safe(key)}">
-              <span><strong>${safe(x.disciplineName || x.name)}</strong><small>${safe(x.date || String(x.year || ""))} · ${x.position == null ? "Plaats onbekend" : `${safe(x.position)}e plaats`}</small></span>
+              <span><strong>${safe(x.disciplineName || x.name || "Toernooi")}</strong><small>${safe(x.date || String(x.year || ""))} · ${x.position == null ? "Plaats onbekend" : `${safe(x.position)}e plaats`}</small></span>
               <span>${expanded ? "⌃" : "⌄"}</span>
             </button>
             ${expanded ? `<div class="epbf-profile-matches">
-              ${x.status !== "ok" ? `<p>Wedstrijdgegevens niet beschikbaar.</p>` : !matchList.length ? `<p>Geen individuele wedstrijden beschikbaar.</p>` : matchList.map(m => `<div class="epbf-profile-match">
+              ${!hasDetails ? `<p>Wedstrijdgegevens worden nog geladen…</p>` : x.status !== "ok" ? `<p>Wedstrijdgegevens niet beschikbaar.</p>` : !matchList.length ? `<p>Geen individuele wedstrijden beschikbaar.</p>` : matchList.map(m => `<div class="epbf-profile-match">
                 <span><small>${safe(m.round || "")} ${m.matchNumber ? "· " + safe(m.matchNumber) : ""}</small><strong>${safe(m.opponent?.name || "Onbekende tegenstander")}</strong></span>
                 <b class="${m.result === "win" ? "epbf-result-win" : m.result === "loss" ? "epbf-result-loss" : ""}">${m.score ?? "–"} – ${m.opponentScore ?? "–"}</b>
               </div>`).join("")}
             </div>` : ""}
           </div>`;
         }).join("")}
-        ${state.loading ? `<div class="empty">Wedstrijdgegevens laden…</div>` : ""}
-        ${state.error ? `<div class="empty">Laden mislukt: ${safe(state.error)}<br><button class="pill" data-epbf-more="${id}">Opnieuw proberen</button></div>` : ""}
-        ${!state.loading && !state.error && !allLoaded ? `<div class="empty">Overige toernooien worden automatisch geladen…</div>` : ""}
+        ${state.baseError && !state.baseLoaded ? `<div class="empty">Snelle toernooihistoriek niet beschikbaar; wedstrijdgegevens worden afzonderlijk opgehaald.</div>` : ""}
+        ${state.loading ? `<div class="empty">Wedstrijdgegevens op de achtergrond laden…</div>` : ""}
+        ${state.error ? `<div class="empty">Laden onderbroken: ${safe(state.error)}<br><button class="pill" data-epbf-more="${id}">Opnieuw proberen</button></div>` : ""}
+        ${!state.loading && !state.error && !allLoaded ? `<div class="empty">Overige wedstrijdgegevens worden automatisch geladen…</div>` : ""}
         ${allLoaded && !state.tournaments.length ? `<div class="empty">Geen historische toernooien gevonden.</div>` : ""}`;
     }
 
