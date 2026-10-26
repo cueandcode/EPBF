@@ -1,5 +1,5 @@
     "use strict";
-    // EPBF app. Rankings, players and legacy matches remain demo data.
+    // EPBF app. Rankings and legacy matches remain demo data; player search uses EPBF D1.
     const $ = (s) => document.querySelector(s);
 
     // Officiële EPBF Live API en kalender-API.
@@ -8,6 +8,114 @@
       "https://epbf-api.nicolasmintjens.workers.dev/archive";
     const EPBF_EVENT_API =
       "https://epbf-api.nicolasmintjens.workers.dev/epbf";
+    const EPBF_PLAYERS_SEARCH_API = "https://epbf-api.nicolasmintjens.workers.dev/players/search";
+    const EPBF_PROFILE_SELECT_API = "https://epbf-api.nicolasmintjens.workers.dev/app/profile/select";
+    const EPBF_PERSONAL_PROFILE_KEY = "epbf_personal_profile_v1";
+    const EPBF_INSTALLATION_KEY = "epbf_installation_id_v1";
+    // Profielfoto's blijven uitsluitend op dit toestel, per EPBF Player ID.
+    const EPBF_LOCAL_PHOTO_PREFIX = "epbf_private_photo_v1_";
+    const photoLabels = {
+      nl: { photo: "Profielfoto toevoegen of wijzigen", remove: "Profielfoto verwijderen", language: "Taal", app: "App-instellingen", profile: "Mijn profiel", photoError: "Foto opslaan mislukt. Probeer een andere afbeelding." },
+      en: { photo: "Add or change profile photo", remove: "Remove profile photo", language: "Language", app: "App settings", profile: "My profile", photoError: "Could not save the photo. Try another image." },
+      fr: { photo: "Ajouter ou modifier la photo", remove: "Supprimer la photo", language: "Langue", app: "Paramètres de l’application", profile: "Mon profil", photoError: "Impossible d’enregistrer la photo. Essayez une autre image." },
+      es: { photo: "Añadir o cambiar foto de perfil", remove: "Eliminar foto de perfil", language: "Idioma", app: "Ajustes de la aplicación", profile: "Mi perfil", photoError: "No se pudo guardar la foto. Prueba otra imagen." },
+      de: { photo: "Profilfoto hinzufügen oder ändern", remove: "Profilfoto entfernen", language: "Sprache", app: "App-Einstellungen", profile: "Mein Profil", photoError: "Foto konnte nicht gespeichert werden. Versuche ein anderes Bild." }
+    };
+    const photoText = () => photoLabels[currentLanguage] || photoLabels.en;
+    const localPhoto = (id) => {
+      try { return localStorage.getItem(EPBF_LOCAL_PHOTO_PREFIX + id) || ""; }
+      catch { return ""; }
+    };
+    function personalPortrait(id, large = false) {
+      const photo = localPhoto(id);
+      return `<div class="portrait ${large ? "large" : ""}" style="${photo ? "overflow:hidden;" : ""}">${photo ? `<img src="${safe(photo)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">` : '<i data-lucide="user-round"></i>'}</div>`;
+    }
+    let photoError = "";
+    async function savePersonalPhoto(file) {
+      if (!file || !personalProfile || !file.type.startsWith("image/")) return;
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const objectUrl = URL.createObjectURL(file);
+          const picture = new Image();
+          picture.onload = () => { URL.revokeObjectURL(objectUrl); resolve(picture); };
+          picture.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Invalid image")); };
+          picture.src = objectUrl;
+        });
+        const canvas = document.createElement("canvas");
+        const size = 256;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+        localStorage.setItem(EPBF_LOCAL_PHOTO_PREFIX + personalProfile.playerId, canvas.toDataURL("image/jpeg", 0.78));
+        photoError = "";
+      } catch (error) {
+        console.error("EPBF local photo:", error);
+        photoError = photoText().photoError;
+      }
+      if (detail?.type === "personal-settings") render();
+    }
+
+    const personalLabels = {
+      nl: { choose: "Kies je EPBF-spelersprofiel", help: "Zoek je naam in de officiële EPBF-spelersindex. Je keuze wordt op dit toestel onthouden en als profielkeuze geregistreerd.", search: "Zoek je naam…", saved: "Mijn spelersprofiel", change: "Ander profiel kiezen", confirm: "Dit profiel kiezen", saving: "Profiel opslaan…", error: "Opslaan mislukt. Controleer je verbinding en probeer opnieuw.", noMatches: "Geen spelers gevonden.", empty: "Typ een naam om te zoeken.", note: "Een profiel kiezen is geen identiteitscontrole.", back: "Terug naar mijn profiel" },
+      en: { choose: "Choose your EPBF player profile", help: "Search the official EPBF player index. Your choice is remembered on this device and registered as a profile selection.", search: "Search your name…", saved: "My player profile", change: "Choose another profile", confirm: "Select this profile", saving: "Saving profile…", error: "Could not save. Check your connection and try again.", noMatches: "No players found.", empty: "Enter a name to search.", note: "Choosing a profile does not verify identity.", back: "Back to my profile" },
+      fr: { choose: "Choisissez votre profil EPBF", help: "Recherchez votre nom dans l’index officiel EPBF. Votre choix est mémorisé sur cet appareil et enregistré.", search: "Rechercher votre nom…", saved: "Mon profil joueur", change: "Choisir un autre profil", confirm: "Choisir ce profil", saving: "Enregistrement…", error: "Échec de l’enregistrement. Vérifiez votre connexion.", noMatches: "Aucun joueur trouvé.", empty: "Saisissez un nom pour rechercher.", note: "Le choix d’un profil ne vérifie pas l’identité.", back: "Retour à mon profil" },
+      es: { choose: "Elige tu perfil EPBF", help: "Busca tu nombre en el índice oficial EPBF. La selección se guarda en este dispositivo y se registra.", search: "Busca tu nombre…", saved: "Mi perfil de jugador", change: "Elegir otro perfil", confirm: "Elegir este perfil", saving: "Guardando…", error: "No se pudo guardar. Comprueba tu conexión.", noMatches: "No se encontraron jugadores.", empty: "Escribe un nombre para buscar.", note: "Elegir un perfil no verifica la identidad.", back: "Volver a mi perfil" },
+      de: { choose: "Wähle dein EPBF-Spielerprofil", help: "Suche deinen Namen im offiziellen EPBF-Index. Die Auswahl wird auf diesem Gerät gespeichert und registriert.", search: "Namen suchen…", saved: "Mein Spielerprofil", change: "Anderes Profil wählen", confirm: "Dieses Profil wählen", saving: "Profil wird gespeichert…", error: "Speichern fehlgeschlagen. Prüfe deine Verbindung.", noMatches: "Keine Spieler gefunden.", empty: "Namen eingeben, um zu suchen.", note: "Die Profilauswahl ist keine Identitätsprüfung.", back: "Zurück zu meinem Profil" }
+    };
+    const personalText = () => personalLabels[currentLanguage] || personalLabels.en;
+    function readPersonalProfile() {
+      try {
+        const value = JSON.parse(localStorage.getItem(EPBF_PERSONAL_PROFILE_KEY) || "null");
+        return value && Number.isInteger(value.playerId) && value.playerId > 0 ? value : null;
+      } catch { return null; }
+    }
+    let personalProfile = readPersonalProfile();
+    let personalChoosing = !personalProfile;
+    let personalSaving = false;
+    let personalError = "";
+    function installationId() {
+      let id = localStorage.getItem(EPBF_INSTALLATION_KEY);
+      if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem(EPBF_INSTALLATION_KEY, id);
+      }
+      return id;
+    }
+    async function selectPersonalProfile(playerId) {
+      if (personalSaving) return;
+      const player = epbfSearchResults.find(p => Number(p.playerId) === playerId);
+      if (!player) return;
+      personalSaving = true;
+      personalError = "";
+      render();
+      try {
+        const response = await fetch(EPBF_PROFILE_SELECT_API, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ installationId: installationId(), playerId })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+        personalProfile = { playerId, name: String(player.name || ""), country: String(player.country || "") };
+        localStorage.setItem(EPBF_PERSONAL_PROFILE_KEY, JSON.stringify(personalProfile));
+        personalChoosing = false;
+        searchText = "";
+        epbfSearchResults = [];
+        epbfSearchState = "idle";
+      } catch (error) {
+        console.error("EPBF personal profile:", error);
+        personalError = personalText().error;
+      } finally {
+        personalSaving = false;
+        render();
+      }
+    }
+    let epbfSearchResults = [];
+    let epbfSearchState = "idle";
+    let epbfSearchTimer = null;
+    let epbfSearchController = null;
+    let epbfSearchRequestId = 0;
 
     // Eventgegevens worden per EPBF-tornooi opgehaald en lokaal in geheugen bewaard.
     const officialEventDetails = new Map();
@@ -397,7 +505,7 @@ function officialFlag(country) {
         console.error("EPBF Live API:", error);
       } finally {
         officialLiveRequest = false;
-        if (mode && (page === "live" || (page === "home" && !detail) || detail?.type === "official-match")) {
+        if (mode && (page === "live" || (page === "home" && (!detail || detail.type === "personal")) || detail?.type === "official-match")) {
           const content = $("#content");
           const scrollPosition = content.scrollTop;
           render();
@@ -697,7 +805,7 @@ function officialFlag(country) {
       tournamentFilter = "ongoing",
       tournamentView = "calendar",
       tournamentArchiveCategory = "all",
-      rankingFilter = "men",
+      rankingFilter = "eurotour",
       tournamentTab = "information",
       matchTab = "score",
       playerTab = "overview",
@@ -728,33 +836,49 @@ function officialFlag(country) {
     const playerRow = (p, rank = null) =>
       `<button class="person-row" data-player="${p.id}">${rank !== null ? `<span class="rank-num">${rank}</span>` : '<span class="avatar">♟</span>'}<span class="flag">${p.flag}</span>
           <span class="person-name">${safe(p.name)}</span>${rank !== null ? `<strong class="points">${p.points}</strong>` : '<span class="chev">›</span>'}</button>`;
+    const playerNavLabels = {
+      nl: { history: "Vorige tornooien", settings: "Instellingen" },
+      en: { history: "Past events", settings: "Settings" },
+      fr: { history: "Tournois passés", settings: "Paramètres" },
+      es: { history: "Torneos previos", settings: "Ajustes" },
+      de: { history: "Frühere Turniere", settings: "Einstellungen" }
+    };
     function nav() {
-      const items = ["home", "live", "tournaments", "ranking", "players"];
-      $("#nav").innerHTML = items
-        .map(
-          (key) =>
-            `<button class="nav-item ${page === key ? "selected" : ""}" data-page="${key}">
-          <span class="nav-icon">
-      <i data-lucide="${icons[key]}">
-          </i>
-    </span>
-          <small>${t(key)}</small>
-          </button>`,
-        )
-        .join("");
+      const playerMode = mode === "player";
+      const items = playerMode
+        ? ["home", "live", "tournaments", "ranking", "players", "settings"]
+        : ["home", "live", "tournaments", "ranking", "players"];
+      const labels = playerNavLabels[currentLanguage] || playerNavLabels.en;
+      const playerIcons = { history: "history", settings: "settings" };
+      $("#nav").classList.toggle("player-navigation", playerMode);
+      $("#nav").innerHTML = items.map(key => {
+        const label = key === "history" || key === "settings" ? labels[key] : t(key);
+        const selected = page === key && (!detail || (key === "home" && detail.type === "personal") || (key === "settings" && detail.type === "personal-settings"));
+        return `<button class="nav-item ${selected ? "selected" : ""}" data-page="${key}">
+          <span class="nav-icon"><i data-lucide="${playerIcons[key] || icons[key]}"></i></span>
+          <small>${safe(label)}</small></button>`;
+      }).join("");
     }
     function showMode(next) {
       mode = next;
       $("#splash").classList.add("hidden");
       $("#main").classList.remove("hidden");
       page = "home";
-      detail = null;
+      detail = next === "player" ? { type: "personal", id: 0 } : null;
+      personalChoosing = !personalProfile;
       render();
     }
     function go(next) {
       page = next;
-      detail = null;
+      detail = mode === "player" && next === "home" ? { type: "personal", id: 0 }
+        : mode === "player" && next === "settings" ? { type: "personal-settings", id: 0 }
+        : null;
       searchText = "";
+      clearTimeout(epbfSearchTimer);
+      if (epbfSearchController) epbfSearchController.abort();
+      epbfSearchRequestId++;
+      epbfSearchResults = [];
+      epbfSearchState = "idle";
       render();
     }
     function openDetail(type, id) {
@@ -762,7 +886,12 @@ function officialFlag(country) {
       render();
     }
     function back() {
-      if (detail) {
+      if (detail?.type === "personal-settings") {
+        page = "home";
+        detail = { type: "personal", id: 0 };
+        render();
+      } else if (detail) {
+        if (mode === "player") return go("home");
         detail = null;
         render();
       } else if (page !== "home") {
@@ -776,8 +905,25 @@ function officialFlag(country) {
     function render() {
       setAppLanguage(currentLanguage);
       $("#mode-label").textContent = t(mode === "player" ? "player" : "spectator");
-      $("#back").classList.toggle("hidden", !detail && page === "home");
+      // Discrete, vertaalde vermelding dat dit geen officiële EPBF-app is.
+      const unofficialNotice = {
+        nl: "Onafhankelijke app · Niet officieel van EPBF",
+        en: "Independent app · Not an official EPBF app",
+        fr: "Application indépendante · Non officielle EPBF",
+        es: "Aplicación independiente · No oficial de EPBF",
+        de: "Unabhängige App · Keine offizielle EPBF-App"
+      };
+      const headerBar = document.querySelector(".topbar");
+      if (headerBar) headerBar.dataset.unofficialNotice = unofficialNotice[currentLanguage] || unofficialNotice.en;
+      $("#back").classList.toggle("hidden", (mode === "player" && page === "home" && detail?.type === "personal") || (!detail && page === "home"));
       nav();
+      // In spelersmodus staat de taalkeuze onder Instellingen; in kijkersmodus blijft ze bovenaan.
+      // De splash behoudt zijn taalkeuze; enkel de hoofdheader wordt verborgen in spelersmodus.
+      const headerLanguage = document.querySelector(".topbar [data-language-toggle]");
+      if (headerLanguage) {
+        headerLanguage.classList.toggle("hidden", mode === "player");
+        headerLanguage.style.display = mode === "player" ? "none" : "";
+      }
       $("#content").innerHTML = detail
         ? renderDetail()
         : (
@@ -787,6 +933,8 @@ function officialFlag(country) {
               tournaments: renderTournaments,
               ranking: renderRanking,
               players: renderPlayers,
+              history: renderPersonalHistory,
+              settings: renderPersonalSettings,
             }[page] || renderHome
           )();
       $("#content").scrollTop = 0;
@@ -843,6 +991,12 @@ function officialFlag(country) {
           </button>
 
         </div>
+
+        ${mode === "spectator" ? `<button class="feature-card" data-switch-to-viewer="1">
+          <span><i data-lucide="refresh-cw"></i></span>
+          <div><strong>${safe(({nl:"App opnieuw instellen",en:"Change app mode",fr:"Changer de mode",es:"Cambiar modo",de:"App-Modus ändern"}[currentLanguage] || "Change app mode"))}</strong>
+          <small>${safe(({nl:"Kies opnieuw tussen Speler en Kijker",en:"Choose Player or Spectator again",fr:"Choisir Joueur ou Spectateur",es:"Elegir Jugador o Espectador",de:"Spieler oder Zuschauer wählen"}[currentLanguage] || "Choose Player or Spectator again"))}</small></div><b>›</b>
+        </button>` : ""}
 
         ${
           mode === "player"
@@ -953,8 +1107,8 @@ function officialFlag(country) {
 
     function renderTournaments() {
       const views = [
-        ["calendar", "Upcoming & Live"],
-        ["archive", "Previous Events"]
+        ["calendar", t("upcomingAndLive")],
+        ["archive", t("previousEvents")]
       ];
 
       const viewTabs = `<div class="pills">${
@@ -1048,33 +1202,178 @@ function officialFlag(country) {
         ${archiveContent}`;
     }
 
+    // Officiële Euro Tour-rankings. Beide categorieën hebben een eigen cache.
+    const EPBF_RANKINGS_API = "https://epbf-api.nicolasmintjens.workers.dev/rankings";
+    const epbfRankings = new Map();
+    const epbfRankingRequests = new Map();
+    const epbfRankingErrors = new Map();
+    let rankingSearchText = "";
+    let rankingCountryFilter = "";
+
+    const rankingLabels = {
+      nl: { country: "Land", allCountries: "Alle landen", search: "Zoek een speler in de ranking…", loading: "Ranking laden…", error: "Ranking tijdelijk niet beschikbaar.", retry: "Opnieuw proberen", points: "punten", empty: "Geen spelers gevonden." },
+      en: { country: "Country", allCountries: "All countries", search: "Search for a player in the ranking…", loading: "Loading ranking…", error: "Ranking temporarily unavailable.", retry: "Try again", points: "points", empty: "No players found." },
+      fr: { country: "Pays", allCountries: "Tous les pays", search: "Rechercher un joueur dans le classement…", loading: "Chargement du classement…", error: "Classement temporairement indisponible.", retry: "Réessayer", points: "points", empty: "Aucun joueur trouvé." },
+      es: { country: "País", allCountries: "Todos los países", search: "Buscar un jugador en la clasificación…", loading: "Cargando clasificación…", error: "Clasificación temporalmente no disponible.", retry: "Reintentar", points: "puntos", empty: "No se encontraron jugadores." },
+      de: { country: "Land", allCountries: "Alle Länder", search: "Spieler in der Rangliste suchen…", loading: "Rangliste wird geladen…", error: "Rangliste vorübergehend nicht verfügbar.", retry: "Erneut versuchen", points: "Punkte", empty: "Keine Spieler gefunden." }
+    };
+
+    async function loadEPBFRanking(category, force = false) {
+      if (!["eurotour", "eurotour-women"].includes(category)) return;
+      if (!force && (epbfRankings.has(category) || epbfRankingRequests.has(category))) return;
+      if (epbfRankingRequests.has(category)) return;
+      epbfRankingErrors.delete(category);
+      const request = (async () => {
+        const response = await fetch(`${EPBF_RANKINGS_API}/${category}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data?.success || !Array.isArray(data.players) || data.category !== category) {
+          throw new Error("Invalid EPBF ranking response");
+        }
+        epbfRankings.set(category, data.players);
+      })();
+      epbfRankingRequests.set(category, request);
+      try {
+        await request;
+      } catch (error) {
+        epbfRankingErrors.set(category, String(error?.message || error));
+        console.error("EPBF ranking:", category, error);
+      } finally {
+        epbfRankingRequests.delete(category);
+        if (mode && page === "ranking" && !detail && rankingFilter === category) {
+          const content = $("#content");
+          const scrollTop = content?.scrollTop || 0;
+          render();
+          if (content) content.scrollTop = scrollTop;
+        }
+      }
+    }
+
+    function renderRankingList() {
+      const labels = rankingLabels[currentLanguage] || rankingLabels.en;
+      const all = epbfRankings.get(rankingFilter);
+      if (!all) {
+        if (epbfRankingErrors.has(rankingFilter)) {
+          return `<div class="empty">${safe(labels.error)} <button class="pill" data-retry-ranking="1">${safe(labels.retry)}</button></div>`;
+        }
+        return `<div class="empty">${safe(labels.loading)}</div>`;
+      }
+      const query = rankingSearchText.trim().toLocaleLowerCase();
+      const filtered = all.filter(p => String(p.name || "").toLocaleLowerCase().includes(query) &&
+        (!rankingCountryFilter || String(p.country || "").trim() === rankingCountryFilter));
+      if (!filtered.length) return `<div class="empty">${safe(labels.empty)}</div>`;
+      return filtered.map(p => {
+        const id = Number(p.playerId);
+        const position = Number(p.position);
+        const points = Number(p.points);
+        return `<button class="person-row" ${Number.isInteger(id) && id > 0 ? `data-epbf-player="${id}"` : "disabled"}>
+          <span class="rank-num">${Number.isInteger(position) && position > 0 ? position : "–"}</span>
+          <span class="flag">${officialFlag(p.country)}</span>
+          <span class="person-name">${safe(p.name || "–")}</span>
+          <strong class="points">${p.points !== null && p.points !== undefined && Number.isFinite(points) ? safe(points.toLocaleString(currentLanguage === "nl" ? "nl-BE" : currentLanguage)) : "–"}</strong>
+        </button>`;
+      }).join("");
+    }
+
     function renderRanking() {
-      const list = players
-        .filter((p) => p.category === rankingFilter)
-        .sort((a, b) => b.points - a.points);
-      return `${title(t("ranking"))}${pills(
-        [
-          ["men", t("men")],
-          ["women", t("women")],
-          ["youth", t("youth")],
-          ["wheelchair", t("wheelchair")],
-        ],
-        rankingFilter,
-        "ranking-filter",
-      )}${demo()}<div class="person-list">${list.map((p, i) => playerRow(p, i + 1)).join("")}</div>`;
+      const labels = rankingLabels[currentLanguage] || rankingLabels.en;
+      if (!epbfRankings.has(rankingFilter) && !epbfRankingRequests.has(rankingFilter) && !epbfRankingErrors.has(rankingFilter)) {
+        Promise.resolve().then(() => loadEPBFRanking(rankingFilter));
+      }
+      const countries = [...new Set((epbfRankings.get(rankingFilter) || [])
+        .map(p => String(p.country || "").trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+      return `${title(t("ranking"))}
+        ${pills([["eurotour", "Euro Tour"], ["eurotour-women", "Euro Tour Women"]], rankingFilter, "ranking-filter")}
+        <div class="search-wrap"><span>⌕</span><input id="ranking-search" type="search" placeholder="${safe(labels.search)}" value="${safe(rankingSearchText)}" autocomplete="off"></div>
+        <div class="epbf-match-filter"><div class="epbf-filter-fields"><div class="epbf-filter-field">
+          <label for="ranking-country-filter">${safe(labels.country)}</label>
+          <select id="ranking-country-filter">
+            <option value="">${safe(labels.allCountries)}</option>
+            ${countries.map(country => `<option value="${safe(country)}" ${rankingCountryFilter === country ? "selected" : ""}>${officialFlag(country)} ${safe(country)}</option>`).join("")}
+          </select>
+        </div></div></div>
+        <div class="person-list" id="ranking-list">${renderRankingList()}</div>`;
     }
+    function epbfSearchRow(p) {
+      const id = Number(p.playerId);
+      if (!Number.isInteger(id) || id <= 0) return "";
+      return `<button class="person-row" data-epbf-player="${id}">
+        <span class="avatar">♟</span>
+        <span class="flag">${officialFlag(p.country)}</span>
+        <span class="person-name">${safe(p.name || "–")}</span>
+        <span class="chev">›</span>
+      </button>`;
+    }
+
+    function epbfSearchList() {
+      if (!searchText.trim()) return `<div class="empty">${safe({
+        nl: "Typ een spelersnaam om te zoeken.",
+        en: "Type a player name to search.",
+        fr: "Saisissez un nom de joueur pour rechercher.",
+        es: "Escribe el nombre de un jugador para buscar.",
+        de: "Gib einen Spielernamen ein, um zu suchen."
+      }[currentLanguage] || "Type a player name to search.")}</div>`;
+      if (epbfSearchState === "loading") return `<div class="empty">${safe({
+        nl: "Spelers zoeken…", en: "Searching players…", fr: "Recherche de joueurs…",
+        es: "Buscando jugadores…", de: "Spieler werden gesucht…"
+      }[currentLanguage] || "Searching players…")}</div>`;
+      if (epbfSearchState === "error") return `<div class="empty">${safe({
+        nl: "Zoeken tijdelijk niet beschikbaar. Probeer opnieuw.",
+        en: "Search is temporarily unavailable. Please try again.",
+        fr: "Recherche temporairement indisponible. Réessayez.",
+        es: "Búsqueda temporalmente no disponible. Inténtalo de nuevo.",
+        de: "Suche vorübergehend nicht verfügbar. Bitte erneut versuchen."
+      }[currentLanguage] || "Search unavailable.")}</div>`;
+      return epbfSearchResults.map(epbfSearchRow).join("") || `<div class="empty">${t("noResults")}</div>`;
+    }
+
     function renderPlayers() {
-      const list = players.filter((p) =>
-        `${p.name} ${p.country}`
-          .toLocaleLowerCase()
-          .includes(searchText.toLocaleLowerCase()),
-      );
       return `${title(t("players"))}<div class="search-wrap">
-          <span>⌕</span>
-          <input id="player-search" type="search" placeholder="${t("searchPlayer")}" value="${safe(searchText)}" autocomplete="off">
-          </div>${demo()}<div class="person-list" id="player-list">${list.map((p) => playerRow(p)).join("") || `<div class="empty">${t("noResults")}</div>`}</div>`;
+        <span>⌕</span>
+        <input id="player-search" type="search" placeholder="${t("searchPlayer")}" value="${safe(searchText)}" autocomplete="off">
+        </div><div class="person-list" id="player-list">${epbfSearchList()}</div>`;
     }
+
+    function refreshEPBFSearchList() {
+      if (detail?.type === "personal" && personalChoosing) {
+        const list = $("#personal-player-list");
+        if (list) list.innerHTML = personalSearchList();
+        return;
+      }
+      if (page !== "players" || detail) return;
+      const list = $("#player-list");
+      if (list) list.innerHTML = epbfSearchList();
+    }
+
+    async function searchEPBFPlayers(query, requestId) {
+      const controller = new AbortController();
+      epbfSearchController = controller;
+      try {
+        const response = await fetch(`${EPBF_PLAYERS_SEARCH_API}?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal, cache: "no-store"
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data?.success || !Array.isArray(data.players)) throw new Error("Invalid player search response");
+        if (requestId !== epbfSearchRequestId) return;
+        epbfSearchResults = data.players;
+        epbfSearchState = "ready";
+      } catch (error) {
+        if (requestId !== epbfSearchRequestId || error.name === "AbortError") return;
+        epbfSearchResults = [];
+        epbfSearchState = "error";
+        console.error("EPBF player search:", error);
+      } finally {
+        if (requestId === epbfSearchRequestId) {
+          epbfSearchController = null;
+          refreshEPBFSearchList();
+        }
+      }
+    }
+
     function renderDetail() {
+      if (detail.type === "personal-settings") return renderPersonalSettings();
       if (detail.type === "official-match") {
         return renderOfficialMatchDetail(
           officialMatches.find((match) => match.id === detail.id)
@@ -1371,9 +1670,48 @@ function isChampionshipOverview(event) {
 
     // Officiele EPBF-spelersfiche: resultaten per pagina van vier toernooien.
     const EPBF_PLAYER_API = "https://epbf-api.nicolasmintjens.workers.dev/player";
+    // Bewaar de openbare EPBF-wedstrijdhistoriek lokaal zodat een refresh niet opnieuw
+    // het volledige laadscherm toont. Cache wordt per Player ID bewaard en na 6 uur
+    // stil op de achtergrond vernieuwd.
+    const EPBF_PROFILE_STORAGE_PREFIX = "epbf_player_stats_cache_v1_";
+    const EPBF_PROFILE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
     const epbfProfileCache = new Map();
     const epbfProfileRequests = new Set();
     const epbfProfileExpanded = new Set();
+
+    function readEPBFProfileCache(id) {
+      try {
+        const raw = localStorage.getItem(EPBF_PROFILE_STORAGE_PREFIX + id);
+        if (!raw) return null;
+        const saved = JSON.parse(raw);
+        if (!saved || Number(saved.playerId) !== Number(id) || !Array.isArray(saved.tournaments)) return null;
+        return saved;
+      } catch (error) {
+        console.warn("EPBF lokale statistiekencache kon niet worden gelezen:", error);
+        return null;
+      }
+    }
+
+    function saveEPBFProfileCache(id, state) {
+      try {
+        const saved = {
+          version: 1,
+          playerId: Number(id),
+          playerName: state.playerName || "",
+          totalTournaments: state.totalTournaments,
+          tournaments: state.tournaments,
+          nextOffset: state.nextOffset,
+          baseLoaded: Boolean(state.baseLoaded),
+          cachedAt: state.cachedAt || Date.now(),
+          lastRefreshAttemptAt: state.lastRefreshAttemptAt || 0
+        };
+        localStorage.setItem(EPBF_PROFILE_STORAGE_PREFIX + id, JSON.stringify(saved));
+        state.cachedAt = saved.cachedAt;
+      } catch (error) {
+        // De app blijft bruikbaar als opslagruimte vol is of lokale opslag uitstaat.
+        console.warn("EPBF lokale statistiekencache kon niet worden opgeslagen:", error);
+      }
+    }
 
     function epbfPlayerLink(player, className = "") {
       const id = Number(player?.playerId);
@@ -1383,16 +1721,27 @@ function isChampionshipOverview(event) {
     }
 
     function epbfProfileState(id) {
-      if (!epbfProfileCache.has(id)) epbfProfileCache.set(id, {
-        playerName: "", totalTournaments: null, tournaments: [], nextOffset: 0,
-        error: "", loading: false, baseLoading: false, baseLoaded: false,
-        baseError: "", started: false
-      });
+      if (!epbfProfileCache.has(id)) {
+        const saved = readEPBFProfileCache(id);
+        const hasSavedData = Boolean(saved && saved.tournaments.length);
+        epbfProfileCache.set(id, {
+          playerName: saved?.playerName || "",
+          totalTournaments: saved?.totalTournaments ?? null,
+          tournaments: hasSavedData ? saved.tournaments : [],
+          nextOffset: saved ? saved.nextOffset : 0,
+          error: "", loading: false, baseLoading: false,
+          baseLoaded: Boolean(saved?.baseLoaded), baseError: "",
+          started: hasSavedData, retryCount: 0,
+          cachedAt: Number(saved?.cachedAt) || 0,
+          lastRefreshAttemptAt: Number(saved?.lastRefreshAttemptAt) || 0,
+          backgroundRefreshing: false
+        });
+      }
       return epbfProfileCache.get(id);
     }
 
     function epbfProfileRefresh(id) {
-      if (detail?.type !== "epbf-player" || Number(detail.id) !== id) return;
+      if (!((detail?.type === "epbf-player" && Number(detail.id) === id) || (detail?.type === "personal" && personalProfile?.playerId === id && !personalChoosing) || (mode === "player" && page === "history" && !detail && personalProfile?.playerId === id))) return;
       const content = $("#content");
       const scroll = content?.scrollTop || 0;
       render();
@@ -1425,6 +1774,8 @@ function isChampionshipOverview(event) {
           return previous ? { ...t, ...previous } : t;
         });
         state.baseLoaded = true;
+        state.cachedAt = Date.now();
+        saveEPBFProfileCache(id, state);
       } catch (error) {
         // Een fout in de lichte fiche mag de bestaande stats-route niet blokkeren.
         state.baseError = String(error?.message || error);
@@ -1465,17 +1816,130 @@ function isChampionshipOverview(event) {
           }
         }
         state.nextOffset = data.nextOffset;
+        state.retryCount = 0;
+        state.cachedAt = Date.now();
+        saveEPBFProfileCache(id, state);
       } catch (error) {
         state.error = String(error?.message || error);
+        state.retryCount = (state.retryCount || 0) + 1;
       } finally {
         state.loading = false;
         epbfProfileRequests.delete(key);
         epbfProfileRefresh(id);
-        // Stop bij fouten: opnieuw proberen gebeurt uitsluitend na een klik.
-        if (!state.error && state.nextOffset !== null) {
-          Promise.resolve().then(() => loadEPBFProfilePage(id));
+        // Bij tijdelijke fetch-fouten automatisch herhalen vanaf dezelfde offset.
+        // Reeds opgehaalde tornooien blijven behouden.
+        if (state.nextOffset !== null) {
+          if (!state.error) {
+            Promise.resolve().then(() => loadEPBFProfilePage(id));
+          } else if (state.retryCount <= 5) {
+            const delay = Math.min(12000, 1200 * Math.pow(2, state.retryCount - 1));
+            setTimeout(() => {
+              if (epbfProfileState(id) === state && state.nextOffset === offset && !state.loading) {
+                loadEPBFProfilePage(id);
+              }
+            }, delay);
+          }
         }
       }
+    }
+
+    // Vernieuw een volledige cache stil op de achtergrond. Het dashboard blijft
+    // zichtbaar; bij een netwerkfout behouden we de laatst opgeslagen resultaten.
+    async function refreshEPBFProfileInBackground(id) {
+      const state = epbfProfileState(id);
+      if (state.backgroundRefreshing || !state.baseLoaded || state.nextOffset !== null) return;
+      state.backgroundRefreshing = true;
+      state.lastRefreshAttemptAt = Date.now();
+      try {
+        let offset = 0;
+        let nextOffset = 0;
+        while (nextOffset !== null) {
+          const response = await fetch(`${EPBF_PLAYER_API}/${id}/stats?offset=${offset}`, { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          if (!data?.success || !Array.isArray(data.tournaments)) throw new Error("Ongeldig EPBF-antwoord");
+          state.playerName = data.playerName || state.playerName;
+          state.totalTournaments = data.totalTournaments ?? state.totalTournaments;
+          const indices = new Map(state.tournaments.map((t, i) => [epbfTournamentKey(t), i]));
+          for (const tournament of data.tournaments) {
+            const key = epbfTournamentKey(tournament);
+            if (indices.has(key)) {
+              const i = indices.get(key);
+              state.tournaments[i] = { ...state.tournaments[i], ...tournament };
+            } else {
+              indices.set(key, state.tournaments.length);
+              state.tournaments.push(tournament);
+            }
+          }
+          nextOffset = data.nextOffset ?? null;
+          if (nextOffset !== null && (!Number.isFinite(Number(nextOffset)) || Number(nextOffset) <= offset)) {
+            throw new Error("Ongeldige EPBF-paginering");
+          }
+          offset = nextOffset;
+        }
+        state.nextOffset = null;
+        state.error = "";
+        state.cachedAt = Date.now();
+      } catch (error) {
+        console.warn("EPBF achtergrondvernieuwing mislukt; bestaande cache blijft beschikbaar:", error);
+      } finally {
+        state.backgroundRefreshing = false;
+        saveEPBFProfileCache(id, state);
+        epbfProfileRefresh(id);
+      }
+    }
+
+    // Interfacevertalingen voor EPBF-toernooi- en spelershistoriek.
+    const epbfUiLabels = {
+      historyLoading: {nl: "Toernooihistoriek laden…", en: "Loading tournament history…", fr: "Chargement de l’historique des tournois…", es: "Cargando historial de torneos…", de: "Turnierverlauf wird geladen…"},
+      historyComplete: {nl: "Volledige beschikbare wedstrijdstatistieken", en: "All available match statistics", fr: "Toutes les statistiques disponibles", es: "Todas las estadísticas disponibles", de: "Alle verfügbaren Spielstatistiken"},
+      historyProgress: {nl: "Wedstrijdstatistieken worden op de achtergrond geladen", en: "Match statistics are loading in the background", fr: "Chargement des statistiques en arrière-plan", es: "Cargando estadísticas en segundo plano", de: "Spielstatistiken werden im Hintergrund geladen"},
+      processed: {nl: "verwerkt", en: "processed", fr: "traités", es: "procesados", de: "verarbeitet"},
+      provisionalWin: {nl: "Voorlopig winstpercentage", en: "Provisional win rate", fr: "Taux de victoire provisoire", es: "Porcentaje de victorias provisional", de: "Vorläufige Siegquote"},
+      unknownResults: {nl: "wedstrijd(en) zonder uitslag", en: "matches without results", fr: "matchs sans résultat", es: "partidos sin resultado", de: "Spiele ohne Ergebnis"},
+      history: {nl: "Toernooihistoriek", en: "Tournament history", fr: "Historique des tournois", es: "Historial de torneos", de: "Turnierverlauf"},
+      unknownPlace: {nl: "Plaats onbekend", en: "Position unknown", fr: "Classement inconnu", es: "Posición desconocida", de: "Platzierung unbekannt"},
+      place: {nl: "plaats", en: "place", fr: "place", es: "puesto", de: "Platz"},
+      matchesLoading: {nl: "Wedstrijdgegevens worden nog geladen…", en: "Match details are still loading…", fr: "Chargement des détails des matchs…", es: "Cargando detalles de los partidos…", de: "Spieldetails werden noch geladen…"},
+      matchesUnavailable: {nl: "Wedstrijdgegevens niet beschikbaar.", en: "Match details unavailable.", fr: "Détails des matchs indisponibles.", es: "Detalles de los partidos no disponibles.", de: "Spieldetails nicht verfügbar."},
+      noIndividual: {nl: "Geen individuele wedstrijden beschikbaar.", en: "No individual matches available.", fr: "Aucun match individuel disponible.", es: "No hay partidos individuales disponibles.", de: "Keine Einzelspiele verfügbar."},
+      unknownOpponent: {nl: "Onbekende tegenstander", en: "Unknown opponent", fr: "Adversaire inconnu", es: "Rival desconocido", de: "Unbekannter Gegner"},
+      historyUnavailable: {nl: "Snelle toernooihistoriek niet beschikbaar; wedstrijdgegevens worden afzonderlijk opgehaald.", en: "Tournament summary unavailable; match details are loaded separately.", fr: "Résumé indisponible ; les matchs sont chargés séparément.", es: "Resumen no disponible; los partidos se cargan por separado.", de: "Turnierübersicht nicht verfügbar; Spiele werden einzeln geladen."},
+      backgroundLoading: {nl: "Wedstrijdgegevens op de achtergrond laden…", en: "Loading match details in the background…", fr: "Chargement des matchs en arrière-plan…", es: "Cargando partidos en segundo plano…", de: "Spiele werden im Hintergrund geladen…"},
+      loadInterrupted: {nl: "Laden onderbroken:", en: "Loading interrupted:", fr: "Chargement interrompu :", es: "Carga interrumpida:", de: "Laden unterbrochen:"},
+      retry: {nl: "Opnieuw proberen", en: "Try again", fr: "Réessayer", es: "Reintentar", de: "Erneut versuchen"},
+      otherLoading: {nl: "Overige wedstrijdgegevens worden automatisch geladen…", en: "Remaining match details are loading automatically…", fr: "Les autres matchs sont chargés automatiquement…", es: "Los demás partidos se cargan automáticamente…", de: "Weitere Spieldetails werden automatisch geladen…"},
+      noHistory: {nl: "Geen historische toernooien gevonden.", en: "No past tournaments found.", fr: "Aucun ancien tournoi trouvé.", es: "No se encontraron torneos anteriores.", de: "Keine vergangenen Turniere gefunden."},
+      event: {nl: "Tornooi", en: "Tournament", fr: "Tournoi", es: "Torneo", de: "Turnier"},
+      events: {nl: "Toernooien", en: "Tournaments", fr: "Tournois", es: "Torneos", de: "Turniere"},
+      matchesProcessed: {nl: "Wedstrijden verwerkt", en: "Matches processed", fr: "Matchs traités", es: "Partidos procesados", de: "Spiele verarbeitet"},
+      wins: {nl: "Gewonnen", en: "Won", fr: "Gagnés", es: "Ganados", de: "Gewonnen"},
+      losses: {nl: "Verloren", en: "Lost", fr: "Perdus", es: "Perdidos", de: "Verloren"},
+      winRate: {nl: "Winstpercentage", en: "Win rate", fr: "Taux de victoire", es: "Porcentaje de victorias", de: "Siegquote"},
+      categories: {nl: "Categorieën", en: "Categories", fr: "Catégories", es: "Categorías", de: "Kategorien"},
+      numberDisciplines: {nl: "Aantal disciplines", en: "Number of disciplines", fr: "Nombre de disciplines", es: "Número de disciplinas", de: "Anzahl Disziplinen"},
+      eventLoading: {nl: "Tornooigegevens laden…", en: "Loading tournament details…", fr: "Chargement des données du tournoi…", es: "Cargando datos del torneo…", de: "Turnierdaten werden geladen…"},
+      eventUnavailable: {nl: "Tornooigegevens nog niet beschikbaar.", en: "Tournament details not available yet.", fr: "Données du tournoi indisponibles pour le moment.", es: "Datos del torneo aún no disponibles.", de: "Turnierdaten noch nicht verfügbar."},
+      participants: {nl: "Deelnemers", en: "Participants", fr: "Participants", es: "Participantes", de: "Teilnehmer"},
+      rankingEntries: {nl: "Rankingregels", en: "Ranking entries", fr: "Entrées du classement", es: "Entradas de clasificación", de: "Ranglisteneinträge"},
+      lastUpdated: {nl: "Laatst bijgewerkt", en: "Last updated", fr: "Dernière mise à jour", es: "Última actualización", de: "Zuletzt aktualisiert"},
+      viewEPBF: {nl: "Bekijk op EPBF.com", en: "View on EPBF.com", fr: "Voir sur EPBF.com", es: "Ver en EPBF.com", de: "Auf EPBF.com ansehen"},
+      nationality: {nl: "Nationaliteit", en: "Nationality", fr: "Nationalité", es: "Nacionalidad", de: "Nationalität"},
+      allCountries: {nl: "Alle landen", en: "All countries", fr: "Tous les pays", es: "Todos los países", de: "Alle Länder"},
+      allPlayers: {nl: "Alle spelers", en: "All players", fr: "Tous les joueurs", es: "Todos los jugadores", de: "Alle Spieler"},
+      player: {nl: "Speler", en: "Player", fr: "Joueur", es: "Jugador", de: "Spieler"},
+      players: {nl: "Spelers", en: "Players", fr: "Joueurs", es: "Jugadores", de: "Spieler"},
+      match: {nl: "Wedstrijd", en: "Match", fr: "Match", es: "Partido", de: "Spiel"},
+      matches: {nl: "Wedstrijden", en: "Matches", fr: "Matchs", es: "Partidos", de: "Spiele"},
+      otherMatches: {nl: "Overige wedstrijden", en: "Other matches", fr: "Autres matchs", es: "Otros partidos", de: "Weitere Spiele"},
+      noFilteredMatches: {nl: "Geen wedstrijden gevonden voor deze filters.", en: "No matches found for these filters.", fr: "Aucun match pour ces filtres.", es: "No se encontraron partidos con estos filtros.", de: "Keine Spiele für diese Filter gefunden."},
+      noEPBFMatches: {nl: "Geen wedstrijdgegevens ontvangen van de EPBF.", en: "No match details received from EPBF.", fr: "Aucune donnée de match reçue de l’EPBF.", es: "No se recibieron datos de partidos de EPBF.", de: "Keine Spieldaten von EPBF erhalten."},
+      noFinalRanking: {nl: "De EPBF heeft nog geen eindstand gepubliceerd.", en: "EPBF has not published final standings yet.", fr: "L’EPBF n’a pas encore publié le classement final.", es: "EPBF aún no ha publicado la clasificación final.", de: "EPBF hat noch keine Endrangliste veröffentlicht."},
+      unknownDate: {nl: "Datum onbekend", en: "Date unknown", fr: "Date inconnue", es: "Fecha desconocida", de: "Datum unbekannt"},
+    };
+    function epbfUi(key) {
+      const item = epbfUiLabels[key];
+      return item ? (item[currentLanguage] || item.en) : key;
     }
 
     function renderEPBFPlayerDetail(id) {
@@ -1492,20 +1956,20 @@ function isChampionshipOverview(event) {
       const heading = state.playerName || `EPBF-speler #${id}`;
       const loadedStats = state.tournaments.filter(x => x.stats || Array.isArray(x.matches) || x.status).length;
       return `${detailBack(t("players"))}
-        <div class="profile-hero"><div class="portrait large"><i data-lucide="user-round"></i></div>
+        <div class="profile-hero">${personalPortrait(id, true)}
           <div><h1>${safe(heading)}</h1><p>EPBF ID ${id}</p></div></div>
         <div class="epbf-profile-status">${state.baseLoading && !state.tournaments.length
-          ? "Toernooihistoriek laden…"
-          : allLoaded ? "Volledige beschikbare wedstrijdstatistieken"
-          : `Wedstrijdstatistieken worden op de achtergrond geladen · ${loadedStats} van ${state.totalTournaments ?? "…"} toernooien`}</div>
+          ? epbfUi("historyLoading")
+          : allLoaded ? epbfUi("historyComplete")
+          : `${epbfUi("historyProgress")} · ${loadedStats} / ${state.totalTournaments ?? "…"} ${epbfUi("events")}`}</div>
         <div class="stats-grid">
-          <div><strong>${state.totalTournaments ?? state.tournaments.length}</strong><small>Toernooien</small></div>
-          <div><strong>${played}</strong><small>Wedstrijden verwerkt</small></div>
-          <div><strong>${wins}</strong><small>Gewonnen</small></div>
-          <div><strong>${losses}</strong><small>Verloren</small></div>
+          <div><strong>${state.totalTournaments ?? state.tournaments.length}</strong><small>${epbfUi("events")}</small></div>
+          <div><strong>${played}</strong><small>${epbfUi("matchesProcessed")}</small></div>
+          <div><strong>${wins}</strong><small>${epbfUi("wins")}</small></div>
+          <div><strong>${losses}</strong><small>${epbfUi("losses")}</small></div>
         </div>
-        <div class="epbf-profile-status">${allLoaded ? "Winstpercentage" : "Voorlopig winstpercentage"}: ${played ? (100 * wins / played).toFixed(1).replace(".", ",") + "%" : "–"}${unknown ? ` · ${unknown} wedstrijd(en) zonder uitslag` : ""}</div>
-        <h2 class="group-title">Toernooihistoriek</h2>
+        <div class="epbf-profile-status">${allLoaded ? epbfUi("winRate") : epbfUi("provisionalWin")}: ${played ? (100 * wins / played).toFixed(1).replace(".", ",") + "%" : "–"}${unknown ? ` · ${unknown} ${epbfUi("unknownResults")}` : ""}</div>
+        <h2 class="group-title">${epbfUi("history")}</h2>
         ${state.tournaments.map(x => {
           const key = `${id}:${x.eventId ?? x.id}`;
           const expanded = epbfProfileExpanded.has(key);
@@ -1513,22 +1977,22 @@ function isChampionshipOverview(event) {
           const hasDetails = x.status || x.stats || Array.isArray(x.matches);
           return `<div class="epbf-profile-tournament">
             <button class="epbf-profile-toggle" data-epbf-expand="${safe(key)}">
-              <span><strong>${safe(x.disciplineName || x.name || "Toernooi")}</strong><small>${safe(x.date || String(x.year || ""))} · ${x.position == null ? "Plaats onbekend" : `${safe(x.position)}e plaats`}</small></span>
+              <span><strong>${safe(x.disciplineName || x.name || epbfUi("event"))}</strong><small>${safe(x.date || String(x.year || ""))} · ${x.position == null ? epbfUi("unknownPlace") : `${safe(x.position)} · ${epbfUi("place")}`}</small></span>
               <span>${expanded ? "⌃" : "⌄"}</span>
             </button>
             ${expanded ? `<div class="epbf-profile-matches">
-              ${!hasDetails ? `<p>Wedstrijdgegevens worden nog geladen…</p>` : x.status !== "ok" ? `<p>Wedstrijdgegevens niet beschikbaar.</p>` : !matchList.length ? `<p>Geen individuele wedstrijden beschikbaar.</p>` : matchList.map(m => `<div class="epbf-profile-match">
-                <span><small>${safe(m.round || "")} ${m.matchNumber ? "· " + safe(m.matchNumber) : ""}</small><strong>${safe(m.opponent?.name || "Onbekende tegenstander")}</strong></span>
+              ${!hasDetails ? `<p>${epbfUi("matchesLoading")}</p>` : x.status !== "ok" ? `<p>${epbfUi("matchesUnavailable")}</p>` : !matchList.length ? `<p>${epbfUi("noIndividual")}</p>` : matchList.map(m => `<div class="epbf-profile-match">
+                <span><small>${safe(m.round || "")} ${m.matchNumber ? "· " + safe(m.matchNumber) : ""}</small><strong>${safe(m.opponent?.name || epbfUi("unknownOpponent"))}</strong></span>
                 <b class="${m.result === "win" ? "epbf-result-win" : m.result === "loss" ? "epbf-result-loss" : ""}">${m.score ?? "–"} – ${m.opponentScore ?? "–"}</b>
               </div>`).join("")}
             </div>` : ""}
           </div>`;
         }).join("")}
-        ${state.baseError && !state.baseLoaded ? `<div class="empty">Snelle toernooihistoriek niet beschikbaar; wedstrijdgegevens worden afzonderlijk opgehaald.</div>` : ""}
-        ${state.loading ? `<div class="empty">Wedstrijdgegevens op de achtergrond laden…</div>` : ""}
-        ${state.error ? `<div class="empty">Laden onderbroken: ${safe(state.error)}<br><button class="pill" data-epbf-more="${id}">Opnieuw proberen</button></div>` : ""}
-        ${!state.loading && !state.error && !allLoaded ? `<div class="empty">Overige wedstrijdgegevens worden automatisch geladen…</div>` : ""}
-        ${allLoaded && !state.tournaments.length ? `<div class="empty">Geen historische toernooien gevonden.</div>` : ""}`;
+        ${state.baseError && !state.baseLoaded ? `<div class="empty">${epbfUi("historyUnavailable")}</div>` : ""}
+        ${state.loading ? `<div class="empty">${epbfUi("backgroundLoading")}</div>` : ""}
+        ${state.error ? `<div class="empty">${epbfUi("loadInterrupted")} ${safe(state.error)}<br><button class="pill" data-epbf-more="${id}">${epbfUi("retry")}</button></div>` : ""}
+        ${!state.loading && !state.error && !allLoaded ? `<div class="empty">${epbfUi("otherLoading")}</div>` : ""}
+        ${allLoaded && !state.tournaments.length ? `<div class="empty">${epbfUi("noHistory")}</div>` : ""}`;
     }
 
     function epbfScore(value) {
@@ -1626,8 +2090,8 @@ function isChampionshipOverview(event) {
       ] : [
         ["information", t("information")],
         ["participants", t("participants")],
-        ["matches", "Wedstrijden"],
-        ["ranking", "Eindstand"]
+        ["matches", epbfUi("matches")],
+        ["ranking", t("standings")]
       ];
       let body = "";
 
@@ -1636,20 +2100,20 @@ function isChampionshipOverview(event) {
           body = renderChampionshipDisciplineList(e, championshipData);
         } else {
           body = `<div class="info-card">
-            ${infoRow("Tornooi", e.name)}
+            ${infoRow(epbfUi("event"), e.name)}
             ${infoRow(t("location"), [e.city, e.country].filter(Boolean).join(", ") || "–")}
             ${infoRow(t("period"), isArchive ? (e.date || "–") : dateRange(e))}
             ${infoRow(t("discipline"), e.disciplines || e.discipline || "–")}
-            ${infoRow("Categorieën", e.classification || "Seniors & Ladies")}
+            ${infoRow(epbfUi("categories"), e.classification || "Seniors & Ladies")}
             ${infoRow(t("status"), e.status ? t(e.status) : "–")}
-            ${infoRow("Aantal disciplines", championshipData?.count ?? "…")}
+            ${infoRow(epbfUi("numberDisciplines"), championshipData?.count ?? "…")}
           </div>`;
         }
       } else if (!data) {
         const key = `${e.id}:${categoryInfo}`;
         const loading = officialEventRequests.has(key);
-        body = `<div class="empty">${loading ? "Tornooigegevens laden…" : "Tornooigegevens nog niet beschikbaar."}
-          ${!loading ? `<button class="pill" data-retry-event="${safe(e.id)}">Opnieuw proberen</button>` : ""}
+        body = `<div class="empty">${loading ? epbfUi("eventLoading") : epbfUi("eventUnavailable")}
+          ${!loading ? `<button class="pill" data-retry-event="${safe(e.id)}">${epbfUi("retry")}</button>` : ""}
         </div>`;
         if (officialEventError) body += `<div class="empty">${safe(officialEventError)}</div>`;
       } else if (tournamentTab === "information") {
@@ -1658,21 +2122,21 @@ function isChampionshipOverview(event) {
         const headerLogo = document.querySelector("header img")?.getAttribute("src") ||
           document.querySelector(".header-logo img")?.getAttribute("src") || "";
         body = `<div class="info-card">
-          ${infoRow("Tornooi", e.name)}
+          ${infoRow(epbfUi("event"), e.name)}
           ${infoRow(t("location"), [e.city, e.country].filter(Boolean).join(", ") || "–")}
           ${infoRow(t("period"), isArchive ? (e.date || "–") : dateRange(e))}
           ${infoRow(t("discipline"), e.disciplines || e.discipline || "–")}
           ${infoRow(t("category"), e.categoryName || e.category || e.classification || "–")}
           ${infoRow(t("status"), e.status ? t(e.status) : "–")}
-          ${infoRow("Deelnemers", data.counts?.participants ?? data.participants?.length ?? 0)}
-          ${infoRow("Wedstrijden", data.counts?.matches ?? data.matches?.length ?? 0)}
-          ${infoRow("Rankingregels", data.counts?.ranking ?? data.ranking?.length ?? 0)}
-          ${infoRow("Laatst bijgewerkt", data.updatedAt ? new Date(data.updatedAt).toLocaleString(currentLanguage === "nl" ? "nl-BE" : currentLanguage) : "–")}
+          ${infoRow(epbfUi("participants"), data.counts?.participants ?? data.participants?.length ?? 0)}
+          ${infoRow(epbfUi("matches"), data.counts?.matches ?? data.matches?.length ?? 0)}
+          ${infoRow(epbfUi("rankingEntries"), data.counts?.ranking ?? data.ranking?.length ?? 0)}
+          ${infoRow(epbfUi("lastUpdated"), data.updatedAt ? new Date(data.updatedAt).toLocaleString(currentLanguage === "nl" ? "nl-BE" : currentLanguage) : "–")}
         </div>
         <div class="epbf-official-link-wrap">
           <a class="epbf-official-link" href="${safe(officialInfoUrl)}" target="_blank" rel="noopener noreferrer">
             <span class="epbf-official-link-logo">${headerLogo ? `<img src="${safe(headerLogo)}" alt="EPBF">` : "EPBF"}</span>
-            <span class="epbf-official-link-label">Bekijk op EPBF.com</span>
+            <span class="epbf-official-link-label">${epbfUi("viewEPBF")}</span>
             <span class="epbf-official-link-arrow" aria-hidden="true">↗</span>
           </a>
         </div>`;
@@ -1690,9 +2154,9 @@ function isChampionshipOverview(event) {
           ? `<div class="epbf-match-filter">
               <div class="epbf-filter-fields">
                 <div class="epbf-filter-field">
-                  <label for="epbf-participant-country-filter">Nationaliteit</label>
+                  <label for="epbf-participant-country-filter">${epbfUi("nationality")}</label>
                   <select id="epbf-participant-country-filter">
-                    <option value="">Alle landen</option>
+                    <option value="">${epbfUi("allCountries")}</option>
                     ${countries.map(country => `<option value="${safe(country)}" ${String(country) === selectedCountry ? "selected" : ""}>${officialFlag(country)} ${safe(country)}</option>`).join("")}
                   </select>
                 </div>
@@ -1731,20 +2195,20 @@ function isChampionshipOverview(event) {
             players.some(player => matchPlayerCountry(player) === officialMatchCountryFilter);
           return matchesPlayer && matchesCountry;
         });
-        const roundNames = [...new Set(list.map(m => m.round || "Overige wedstrijden"))];
+        const roundNames = [...new Set(list.map(m => m.round || epbfUi("otherMatches")))];
         body = `<div class="epbf-match-filter">
           <div class="epbf-filter-fields">
             <div class="epbf-filter-field">
-              <label for="epbf-match-player-filter">Speler</label>
+              <label for="epbf-match-player-filter">${epbfUi("player")}</label>
               <select id="epbf-match-player-filter">
-                <option value="">Alle spelers</option>
+                <option value="">${epbfUi("allPlayers")}</option>
                 ${names.map(name => `<option value="${safe(name)}" ${name === officialMatchPlayerFilter ? "selected" : ""}>${safe(name)}</option>`).join("")}
               </select>
             </div>
             <div class="epbf-filter-field">
-              <label for="epbf-match-country-filter">Nationaliteit</label>
+              <label for="epbf-match-country-filter">${epbfUi("nationality")}</label>
               <select id="epbf-match-country-filter">
-                <option value="">Alle landen</option>
+                <option value="">${epbfUi("allCountries")}</option>
                 ${countries.map(country => `<option value="${safe(country)}" ${country === officialMatchCountryFilter ? "selected" : ""}>${officialFlag(country)} ${safe(country)}</option>`).join("")}
               </select>
             </div>
@@ -1752,26 +2216,26 @@ function isChampionshipOverview(event) {
           <small>${list.length} van ${allMatches.length} wedstrijden</small>
         </div>` + (list.length
           ? roundNames.map(round => {
-              const roundMatches = list.filter(m => (m.round || "Overige wedstrijden") === round);
+              const roundMatches = list.filter(m => (m.round || epbfUi("otherMatches")) === round);
               return `<div class="epbf-round-heading">
                 <strong>${safe(round)}</strong>
                 <small>${roundMatches.length} ${roundMatches.length === 1 ? "wedstrijd" : "wedstrijden"}</small>
               </div>${roundMatches.map((match, index) => epbfMatchRow(match, index)).join("")}`;
             }).join("")
-          : `<div class="empty">${officialMatchPlayerFilter || officialMatchCountryFilter ? "Geen wedstrijden gevonden voor deze filters." : "Geen wedstrijdgegevens ontvangen van de EPBF."}</div>`);
+          : `<div class="empty">${officialMatchPlayerFilter || officialMatchCountryFilter ? epbfUi("noFilteredMatches") : epbfUi("noEPBFMatches")}</div>`);
       } else if (tournamentTab === "ranking" || tournamentTab === "standings") {
         const list = Array.isArray(data.ranking) ? data.ranking : [];
         body = list.length
           ? `<div class="person-list">${list.map(epbfRankingRow).join("")}</div>`
-          : `<div class="empty">De EPBF heeft nog geen eindstand gepubliceerd.</div>`;
+          : `<div class="empty">${epbfUi("noFinalRanking")}</div>`;
       } else if (tournamentTab === "schedule") {
         const list = Array.isArray(data.matches) ? data.matches.filter(m => m.scheduled || m.table) : [];
         body = list.length
           ? list.map((m, i) => `<div class="info-card">
-              ${infoRow("Wedstrijd", `${m.matchNumber || i + 1}${m.round ? ` · ${m.round}` : ""}`)}
+              ${infoRow(epbfUi("match"), `${m.matchNumber || i + 1}${m.round ? ` · ${m.round}` : ""}`)}
               ${infoRow("Tijd", m.scheduled || "–")}
               ${infoRow(t("table"), m.table || "–")}
-              ${infoRow("Spelers", `${epbfPlayerName(m.players?.[0])} – ${epbfPlayerName(m.players?.[1])}`)}
+              ${infoRow(epbfUi("players"), `${epbfPlayerName(m.players?.[0])} – ${epbfPlayerName(m.players?.[1])}`)}
               ${infoRow("Score", `${epbfScore(m.scoreA)} – ${epbfScore(m.scoreB)}`)}
             </div>`).join("")
           : `<div class="empty">Het speelschema is nog niet beschikbaar als gestructureerde gegevens.</div>
@@ -1781,7 +2245,7 @@ function isChampionshipOverview(event) {
       return `${detailBack(t("tournaments"))}
         <div class="event-hero ${epbfTournamentImage(e) ? "event-hero-logo" : ""}"${epbfTournamentImage(e) ? ` style="--epbf-hero-logo: url('${epbfTournamentImage(e)}')"` : ""}><div><h1>${safe(e.name)}</h1>
           <small>${safe(e.categoryName || e.category || e.classification || "")}<br>
-          ${safe(isArchive ? (e.date || "Datum onbekend") : [e.city, e.country].filter(Boolean).join(", "))}<br>
+          ${safe(isArchive ? (e.date || epbfUi("unknownDate")) : [e.city, e.country].filter(Boolean).join(", "))}<br>
           ${safe(isArchive ? "" : dateRange(e))}</small>
         </div></div>
         ${pills(tabs, tournamentTab, "tournament-tab")}
@@ -1789,7 +2253,7 @@ function isChampionshipOverview(event) {
         ${data ? "" : `<div class="epbf-official-link-wrap">
           <a class="epbf-official-link" href="${safe(e.url || e.website || base.url)}" target="_blank" rel="noopener noreferrer">
             <span class="epbf-official-link-logo">EPBF</span>
-            <span class="epbf-official-link-label">Bekijk op EPBF.com</span>
+            <span class="epbf-official-link-label">${epbfUi("viewEPBF")}</span>
             <span class="epbf-official-link-arrow" aria-hidden="true">↗</span>
           </a>
         </div>`}`;
@@ -1849,16 +2313,428 @@ function isChampionshipOverview(event) {
         "player-tab",
       )}${body}${demo()}`;
     }
+    function personalSearchList() {
+      const labels = personalText();
+      if (!searchText.trim()) return `<div class="empty">${safe(labels.empty)}</div>`;
+      if (epbfSearchState === "loading") return `<div class="empty">${safe(t("players") + "…")}</div>`;
+      if (epbfSearchState === "error") return `<div class="empty">${safe(labels.error)}</div>`;
+      return epbfSearchResults.map(p => {
+        const id = Number(p.playerId);
+        if (!Number.isInteger(id) || id <= 0) return "";
+        return `<button class="person-row" data-select-personal="${id}" ${personalSaving ? "disabled" : ""}>
+          <span class="avatar"><i data-lucide="user-round"></i></span>
+          <span class="flag">${officialFlag(p.country)}</span>
+          <span class="person-name">${safe(p.name || "–")} <small>EPBF ID ${id}</small></span>
+          <span class="chev">›</span></button>`;
+      }).join("") || `<div class="empty">${safe(labels.noMatches)}</div>`;
+    }
+    function renderPersonalHistory() {
+      if (!personalProfile) return renderPersonal();
+      const labels = playerNavLabels[currentLanguage] || playerNavLabels.en;
+      const full = renderEPBFPlayerDetail(personalProfile.playerId);
+      const historyHeading = `<h2 class="group-title">${epbfUi("history")}</h2>`;
+      const section = full.indexOf(historyHeading);
+      return `${title(safe(labels.history))}${section >= 0 ? full.slice(section + historyHeading.length) : full}`;
+    }
+    function renderPersonalSettings() {
+      const labels = personalText();
+      const p = photoText();
+      const settings = { nl: "Instellingen", en: "Settings", fr: "Paramètres", es: "Ajustes", de: "Einstellungen" }[currentLanguage] || "Settings";
+      const id = personalProfile?.playerId;
+      const languageNames = { nl: "🇳🇱 Nederlands", en: "🇬🇧 English", fr: "🇫🇷 Français", es: "🇪🇸 Español", de: "🇩🇪 Deutsch" };
+      const viewerLabels = { nl: "App opnieuw instellen", en: "Set up app again", fr: "Reconfigurer l’application", es: "Configurar la app de nuevo", de: "App neu einrichten" };
+      return `${title(safe(settings))}
+        <div class="profile-hero">${personalPortrait(id, true)}
+          <div><h1>${safe(personalProfile?.name || "")}</h1><p>EPBF ID ${id || "–"}</p></div></div>
+        <div class="section-heading"><strong>${safe(p.profile)}</strong></div>
+        <input type="file" id="personal-photo-file" accept="image/*" style="display:none">
+        <button class="feature-card" data-upload-personal-photo="1">
+          <span><i data-lucide="camera"></i></span><div><strong>${safe(p.photo)}</strong></div><b>›</b>
+        </button>
+        ${localPhoto(id) ? `<button class="feature-card" data-remove-personal-photo="1"><span><i data-lucide="trash-2"></i></span><div><strong>${safe(p.remove)}</strong></div><b>›</b></button>` : ""}
+        ${photoError ? `<p class="epbf-profile-status">${safe(photoError)}</p>` : ""}
+        <button class="feature-card" data-change-personal="1">
+          <span><i data-lucide="user-round-cog"></i></span>
+          <div><strong>${safe(labels.change)}</strong></div><b>›</b>
+        </button>
+        <div class="section-heading"><strong>${safe(p.app)}</strong></div>
+        <button class="feature-card" data-settings-language="1">
+          <span><i data-lucide="languages"></i></span>
+          <div><strong>${safe(p.language)}</strong><small>${safe(languageNames[currentLanguage] || "")}</small></div><b>›</b>
+        </button>
+        <button class="feature-card" data-switch-to-viewer="1">
+          <span><i data-lucide="eye"></i></span>
+          <div><strong>${safe(viewerLabels[currentLanguage] || viewerLabels.en)}</strong></div><b>›</b>
+        </button>
+        <p class="epbf-profile-status">${safe(labels.note)}</p>`;
+    }
+    const personalDashboardLabels = {
+      nl: { last: "Laatste wedstrijd", next: "Volgende wedstrijd", live: "Nu live", all: "Bekijk alles", opponent: "Tegen", noLast: "Nog geen afgewerkte wedstrijd beschikbaar.", noNext: "Geen geplande wedstrijd beschikbaar via de huidige EPBF-koppeling.", loading: "Wedstrijdhistoriek wordt geladen…", provisional: "Recentste beschikbare uitslag", currentTournament: "Actueel European Championship", scheduled: "Live of gepland", match: "Wedstrijd" },
+      en: { last: "Last match", next: "Next match", live: "Live now", all: "View all", opponent: "Against", noLast: "No completed match available yet.", noNext: "No upcoming match available from the current EPBF feed.", loading: "Loading match history…", provisional: "Most recent available result", currentTournament: "Current European Championship", scheduled: "Live or scheduled", match: "Match" },
+      fr: { last: "Dernier match", next: "Prochain match", live: "En direct", all: "Tout voir", opponent: "Contre", noLast: "Aucun match terminé disponible.", noNext: "Aucun prochain match disponible dans les données EPBF.", loading: "Chargement de l'historique…", provisional: "Dernier résultat disponible", currentTournament: "Championnats d'Europe en cours", scheduled: "En direct ou prévu", match: "Match" },
+      es: { last: "Último partido", next: "Próximo partido", live: "En directo", all: "Ver todos", opponent: "Contra", noLast: "Aún no hay partidos terminados disponibles.", noNext: "No hay próximo partido disponible en los datos EPBF.", loading: "Cargando historial…", provisional: "Último resultado disponible", currentTournament: "Campeonato de Europa actual", scheduled: "En directo o programado", match: "Partido" },
+      de: { last: "Letztes Spiel", next: "Nächstes Spiel", live: "Jetzt live", all: "Alle ansehen", opponent: "Gegen", noLast: "Noch kein abgeschlossenes Spiel verfügbar.", noNext: "Kein kommendes Spiel über die EPBF-Daten verfügbar.", loading: "Spielverlauf wird geladen…", provisional: "Neueste verfügbare Partie", currentTournament: "Aktuelle Europameisterschaft", scheduled: "Live oder geplant", match: "Spiel" }
+    };
+
+    // Ergebnisse des laufenden European-Championships-9-Ball-Turniers.
+    // Der Endpunkt wird höchstens alle zwei Minuten abgefragt und unabhängig
+    // von der historische Spielercache gehalten.
+    const EPBF_CURRENT_CHAMPIONSHIP_TTL_MS = 2 * 60 * 1000;
+    let currentChampionshipMatches = [];
+    let currentChampionshipLoadedAt = 0;
+    let currentChampionshipRequest = null;
+    let currentChampionshipAttemptAt = 0;
+    let currentChampionshipError = "";
+    let currentChampionshipIds = [];
+
+    // De spelersgerichte Worker-route leest rechtstreeks de officiële draw-results
+    // van alle actuele kampioenschapsdisciplines. Cache kort zodat nieuwe uitslagen
+    // snel zichtbaar worden zonder bij elke render opnieuw een aanvraag te doen.
+    const EPBF_CURRENT_PLAYER_MATCH_TTL_MS = 15 * 1000;
+    const currentPlayerMatchCache = new Map();
+    const currentPlayerMatchRequests = new Map();
+    const currentPlayerMatchAttemptAt = new Map();
+
+    async function ensureCurrentPlayerMatches(playerId, force = false) {
+      const id = Number(playerId);
+      if (!Number.isSafeInteger(id) || id < 1) return;
+      const now = Date.now();
+      let cached = currentPlayerMatchCache.get(id);
+      // Herstel een eerder succesvol resultaat na een herstart of tijdelijke API-fout.
+      if (!cached) {
+        try {
+          const saved = JSON.parse(localStorage.getItem(`epbf-current-player-matches-${id}`) || "null");
+          if (saved?.data?.success && Array.isArray(saved.data.matches) &&
+              Number(saved.loadedAt) > 0 && now - Number(saved.loadedAt) < 60 * 60 * 1000) {
+            cached = { data: saved.data, loadedAt: Number(saved.loadedAt) };
+            currentPlayerMatchCache.set(id, cached);
+          }
+        } catch (_) { /* Opslag niet beschikbaar: gewoon live ophalen. */ }
+      }
+      if (!force && cached && now - cached.loadedAt < EPBF_CURRENT_PLAYER_MATCH_TTL_MS) return;
+      if (currentPlayerMatchRequests.has(id)) return currentPlayerMatchRequests.get(id);
+      const lastAttempt = currentPlayerMatchAttemptAt.get(id) || 0;
+      if (!force && !cached && now - lastAttempt < 5000) return;
+
+      currentPlayerMatchAttemptAt.set(id, now);
+      const request = (async () => {
+        try {
+          const response = await fetch(`${EPBF_PLAYER_API}/${id}/current-matches${force ? "?refresh=1" : ""}`, { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          if (!data?.success || !Array.isArray(data.matches)) {
+            throw new Error(data?.error || "Ongeldig actueel wedstrijdantwoord");
+          }
+          const loadedAt = Date.now();
+          currentPlayerMatchCache.set(id, { data, loadedAt });
+          try { localStorage.setItem(`epbf-current-player-matches-${id}`, JSON.stringify({ data, loadedAt })); }
+          catch (_) { /* Privémodus of volle opslag: geheugen-cache blijft werken. */ }
+        } catch (error) {
+          console.warn("EPBF actuele spelerswedstrijden:", error);
+          // Bij een netwerkfout blijft een eerder ontvangen resultaat bruikbaar.
+          if (!currentPlayerMatchCache.get(id)?.data?.success) {
+            // Geen definitieve lege uitslag opslaan bij een netwerkfout.
+            currentPlayerMatchCache.set(id, { data: null, loadedAt: 0, error: String(error?.message || error) });
+          }
+        } finally {
+          currentPlayerMatchRequests.delete(id);
+          epbfProfileRefresh(id);
+        }
+      })();
+      currentPlayerMatchRequests.set(id, request);
+      return request;
+    }
+
+    async function fetchCurrentChampionshipDiscipline(id) {
+      const response = await fetch(`${EPBF_EVENT_API}/european-championships/${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!data?.success || !Array.isArray(data.matches)) return [];
+      return data.matches.map((match, index) => ({ ...match, __disciplineId: Number(id), __sourceIndex: index }));
+    }
+
+    async function ensureCurrentChampionshipMatches() {
+      const now = Date.now();
+      if (currentChampionshipRequest) return currentChampionshipRequest;
+      if (currentChampionshipLoadedAt && now - currentChampionshipLoadedAt < EPBF_CURRENT_CHAMPIONSHIP_TTL_MS) return null;
+      // Bij een fout maximaal één nieuwe poging per minuut.
+      if (currentChampionshipAttemptAt && now - currentChampionshipAttemptAt < 60 * 1000) return null;
+
+      currentChampionshipAttemptAt = now;
+      currentChampionshipRequest = (async () => {
+        try {
+          // Ontdek telkens het actuele verzameltornooi via de officiële EPBF-pagina.
+          const discoveryResponse = await fetch("https://epbf-api.nicolasmintjens.workers.dev/current-championship", { cache: "no-store" });
+          if (!discoveryResponse.ok) throw new Error(`Tornooi detecteren: HTTP ${discoveryResponse.status}`);
+          const discovery = await discoveryResponse.json();
+          const disciplineIds = Array.isArray(discovery?.disciplineIds)
+            ? [...new Set(discovery.disciplineIds.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))]
+            : [];
+          if (!discovery?.success || !disciplineIds.length) throw new Error(discovery?.error || "Geen actuele EPBF-disciplines gevonden.");
+          currentChampionshipIds = disciplineIds;
+
+          // Maximaal vier gelijktijdige aanvragen om de Worker en EPBF niet te overbelasten.
+          const results = [];
+          for (let i = 0; i < disciplineIds.length; i += 4) {
+            const batch = disciplineIds.slice(i, i + 4);
+            const batchResults = await Promise.allSettled(batch.map(fetchCurrentChampionshipDiscipline));
+            for (const result of batchResults) {
+              if (result.status === "fulfilled") results.push(...result.value);
+              else console.warn("EPBF-discipline kon niet worden geladen:", result.reason);
+            }
+          }
+          currentChampionshipMatches = results;
+          currentChampionshipLoadedAt = Date.now();
+          currentChampionshipError = results.length ? "" : "Geen wedstrijdgegevens uit de actuele EPBF-disciplines ontvangen.";
+        } catch (error) {
+          currentChampionshipError = String(error?.message || error);
+          console.warn("EPBF resultaten huidig tornooi:", currentChampionshipError);
+        } finally {
+          currentChampionshipRequest = null;
+          if (isPersonalDashboardVisible()) {
+            const content = $("#content");
+            const scrollPosition = content?.scrollTop || 0;
+            render();
+            if (content) content.scrollTop = scrollPosition;
+          }
+        }
+      })();
+      return currentChampionshipRequest;
+    }
+
+    function latestCurrentTournamentResult(playerId) {
+      ensureCurrentPlayerMatches(playerId);
+      const playerCache = currentPlayerMatchCache.get(Number(playerId));
+      const playerData = playerCache?.data;
+
+      // Gebruik eerst het spelersgerichte antwoord uit de officiële draw-results.
+      // Dit vermijdt dat de volgorde van historische statistieken een nieuwer
+      // resultaat uit het lopende kampioenschap overschaduwt.
+      if (playerData?.success) {
+        const latest = playerData.latestCompleted;
+        if (!latest || !Array.isArray(latest.players) || latest.players.length < 2) return null;
+        const playerIndex = latest.players.findIndex(player => Number(player?.playerId) === Number(playerId));
+        if (playerIndex < 0) return null;
+        const opponent = latest.players[playerIndex === 0 ? 1 : 0];
+        const score = playerIndex === 0 ? latest.scoreA : latest.scoreB;
+        const opponentScore = playerIndex === 0 ? latest.scoreB : latest.scoreA;
+        if (!opponent || score == null || opponentScore == null ||
+            String(score).trim() === "" || String(opponentScore).trim() === "" ||
+            String(score) === String(opponentScore)) return null;
+        return {
+          match: {
+            ...latest,
+            __disciplineId: Number(latest.eventId || 0),
+            playerA: latest.players[0],
+            playerB: latest.players[1]
+          },
+          opponent,
+          score,
+          opponentScore,
+          result: Number(score) > Number(opponentScore) ? "win" : "loss"
+        };
+      }
+
+      // Geen tweede selectie uit alle disciplines: die sorteert op event-ID
+      // en kan een oudere wedstrijd als recentste tonen.
+      // Alleen de spelersgerichte Worker-route bepaalt de actuele laatste match.
+      return null;
+    }
+
+    function personalMatchSections(state, playerId) {
+      const l = personalDashboardLabels[currentLanguage] || personalDashboardLabels.en;
+      const currentResult = latestCurrentTournamentResult(playerId);
+      const historical = state.tournaments.flatMap((event, eventIndex) =>
+        (Array.isArray(event.matches) ? event.matches : []).filter(m => m.result === "win" || m.result === "loss")
+          .map((match, matchIndex) => ({ match, event, eventIndex, matchIndex })));
+      // Prioriteit aan een afgewerkte match in het lopende tornooi; gebruik
+      // de spelershistoriek alleen als terugvaloptie.
+      const recent = historical[0];
+      // Toon geen oude historische uitslag zolang de actuele Worker-route nog
+      // niet heeft geantwoord. Zo flitst een wedstrijd uit 2024 niet eerst in beeld.
+      const currentPlayerCacheEntry = currentPlayerMatchCache.get(Number(playerId));
+      const currentPlayerCheckPending = !currentPlayerCacheEntry ||
+        !currentPlayerCacheEntry.data?.success;
+      const recentHtml = currentPlayerCheckPending && !currentResult
+        ? `<div class="epbf-dashboard-empty" role="status" aria-live="polite">${safe(currentPlayerCacheEntry?.error
+          ? `${({nl:"Laatste uitslag tijdelijk niet bereikbaar",en:"Latest result temporarily unavailable",fr:"Dernier résultat temporairement indisponible",es:"Último resultado temporalmente no disponible",de:"Letztes Ergebnis vorübergehend nicht verfügbar"}[currentLanguage] || "Latest result temporarily unavailable")} (${currentPlayerCacheEntry.error})`
+          : ({nl:"Recentste wedstrijd ophalen…",en:"Loading latest match…",fr:"Chargement du dernier match…",es:"Cargando el último partido…",de:"Letztes Spiel wird geladen…"}[currentLanguage] || "Loading latest match…"))}</div>`
+        : currentResult ? `<div class="epbf-dashboard-match">
+        <small>${safe(l.currentTournament)} · ${safe(currentResult.match.round || "")}${currentResult.match.table ? ` · ${safe(currentResult.match.table)}` : ""}</small>
+        <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(currentResult.opponent.name || "–")}</strong>
+          <b class="${currentResult.result === "win" ? "epbf-result-win" : "epbf-result-loss"}">${safe(epbfScore(currentResult.score))} – ${safe(epbfScore(currentResult.opponentScore))}</b></div>
+      </div>` : currentPlayerCacheEntry?.data?.success && recent ? `<div class="epbf-dashboard-match">
+        <small>${safe(l.provisional)} · ${safe(recent.event.disciplineName || recent.event.name || "EPBF")}</small>
+        <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(recent.match.opponent?.name || "–")}</strong>
+          <b class="${recent.match.result === "win" ? "epbf-result-win" : "epbf-result-loss"}">${safe(epbfScore(recent.match.score))} – ${safe(epbfScore(recent.match.opponentScore))}</b></div>
+        <small>${safe(recent.event.date || String(recent.event.year || ""))}</small>
+      </div>` : `<div class="epbf-dashboard-empty">${safe(state.loading || state.baseLoading || !state.baseLoaded ? l.loading : l.noLast)}</div>`;
+
+      // Zoek de volgende wedstrijd eerst in de dynamisch ontdekte disciplines
+      // van het actuele European Championship. De aparte livefeed blijft fallback.
+      // De huidige toernooipagina kan wedstrijden bevatten die nog niet in officialMatches staan.
+      const playerIsInMatch = m =>
+        Number(m.playerA?.playerId) === playerId || Number(m.playerB?.playerId) === playerId;
+      const normalizedMatchStatus = m => String(m.status || "").trim().toUpperCase();
+      const hasValidScore = m => m.scoreA != null && m.scoreB != null &&
+        String(m.scoreA).trim() !== "" && String(m.scoreB).trim() !== "" &&
+        Number.isFinite(Number(m.scoreA)) && Number.isFinite(Number(m.scoreB));
+      const isFinishedStatus = m => ["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO"].includes(normalizedMatchStatus(m));
+      // EPBF-draws geven geplande wedstrijden soms terug met status UNKNOWN,
+      // terwijl beide scores 0 zijn. Behandel die als gepland, maar nooit als
+      // gepland wanneer de bron de match expliciet als afgewerkt markeert.
+      const isUpcomingStatus = m => {
+        const status = normalizedMatchStatus(m);
+        if (["RUNNING", "SCHEDULED", "NOT_STARTED", "PENDING", "WAITING", "UNKNOWN", ""].includes(status)) return true;
+        return !isFinishedStatus(m) && hasValidScore(m) && Number(m.scoreA) === 0 && Number(m.scoreB) === 0;
+      };
+      const currentTournamentUpcoming = currentChampionshipMatches
+        .filter(m => playerIsInMatch(m) && isUpcomingStatus(m))
+        .map(m => ({ match: m, source: "championship" }));
+      const liveFeedUpcoming = officialMatches
+        .filter(m => playerIsInMatch(m) && isUpcomingStatus(m))
+        .map(m => ({ match: m, source: "live" }));
+      // Extra terugvaloptie: de spelersgerichte Worker-route bevat ook de
+      // lopende draw-wedstrijd, zelfs wanneer de algemene livefeed achterloopt.
+      // Alleen dezelfde discipline als de laatst afgewerkte wedstrijd komt in
+      // aanmerking, zodat oudere disciplines niet als 'volgende' verschijnen.
+      const playerCurrentData = currentPlayerMatchCache.get(Number(playerId))?.data;
+      const latestEventId = Number(playerCurrentData?.latestCompleted?.eventId || 0);
+      const playerDrawUpcoming = latestEventId && Array.isArray(playerCurrentData?.matches)
+        ? playerCurrentData.matches.filter(m => {
+            if (Number(m.eventId) !== latestEventId || !Array.isArray(m.players)) return false;
+            if (!m.players.some(p => Number(p.playerId) === playerId)) return false;
+            const target = Number(m.cells?.[3]);
+            const a = Number(m.scoreA), b = Number(m.scoreB);
+            // Het EPBF-draw toont de te behalen score in de vierde cel.
+            // Bijvoorbeeld 5-4 met race to 8: nog bezig.
+            return Number.isFinite(target) && target > 0 &&
+              Number.isFinite(a) && Number.isFinite(b) &&
+              a < target && b < target;
+          }).map(m => ({ match: {
+            ...m, playerA: m.players[0], playerB: m.players[1],
+            __disciplineId: Number(m.eventId),
+            id: m.matchNumber || m.sourceOrder,
+            status: (Number(m.scoreA) > 0 || Number(m.scoreB) > 0) ? "RUNNING" : "SCHEDULED",
+            discipline: "EPBF"
+          }, source: "player-draw" })) : [];
+      const upcomingCandidates = [...currentTournamentUpcoming, ...liveFeedUpcoming, ...playerDrawUpcoming];
+      // Een wedstrijd die al bezig is heeft voorrang; daarna gebruik de eerstvolgende
+      // beschikbare wedstrijd-ID binnen de officiële draw. Dedupliceer dezelfde match.
+      const seenUpcoming = new Set();
+      const uniqueUpcoming = upcomingCandidates.filter(item => {
+        const key = `${item.match.__disciplineId || "live"}:${item.match.id}`;
+        if (seenUpcoming.has(key)) return false;
+        seenUpcoming.add(key);
+        return true;
+      });
+      uniqueUpcoming.sort((a, b) => {
+        const statusDiff = Number(String(b.match.status).toUpperCase() === "RUNNING") - Number(String(a.match.status).toUpperCase() === "RUNNING");
+        if (statusDiff) return statusDiff;
+        if (a.source === "championship" && b.source === "championship") {
+          const disciplineDiff = Number(a.match.__disciplineId || 0) - Number(b.match.__disciplineId || 0);
+          if (disciplineDiff) return disciplineDiff;
+          return Number(a.match.id || 0) - Number(b.match.id || 0);
+        }
+        return 0;
+      });
+      const selectedUpcoming = uniqueUpcoming[0] || null;
+      const current = selectedUpcoming?.match || null;
+      const currentSource = selectedUpcoming?.source || "";
+      const other = current && (Number(current.playerA?.playerId) === playerId ? current.playerB : current.playerA);
+      const rawCurrentStatus = current ? normalizedMatchStatus(current) : "";
+      const currentStatusLabel = current && ["UNKNOWN", "NOT_STARTED", "PENDING", "WAITING", ""].includes(rawCurrentStatus) &&
+        hasValidScore(current) && Number(current.scoreA) === 0 && Number(current.scoreB) === 0
+        ? ({nl:"GEPLAND", en:"SCHEDULED", fr:"PROGRAMMÉ", es:"PROGRAMADO", de:"GEPLANT"}[currentLanguage] || "SCHEDULED")
+        : current ? officialStatus(rawCurrentStatus) : "";
+      const upcomingHtml = current ? `${currentSource === "live" ? `<button class="epbf-dashboard-match epbf-dashboard-match-button" data-official-match="${Number(current.id)}">` : `<div class="epbf-dashboard-match">`}
+        <small>${safe(l.scheduled)} · ${safe(current.discipline || "EPBF")} · ${safe(current.table || "")}</small>
+        <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(other?.name || "–")}</strong><span class="badge ${rawCurrentStatus === "RUNNING" ? "green" : ""}">${safe(currentStatusLabel)}</span></div>
+      ${currentSource === "live" ? `</button>` : `</div>`}` : `<div class="epbf-dashboard-empty">${safe(l.noNext)}</div>`;
+      return `<div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.last)}</strong></div>${recentHtml}</div>
+        <div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.next)}</strong></div>${upcomingHtml}</div>
+        <div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.live)}</strong><button data-page="live">${safe(l.all)} ›</button></div>${officialLiveContent()}</div>`;
+    }
+    const personalLoadingLabels = {
+      nl: { title: "Je spelersgegevens worden geladen", oneTime: "Eenmalige voorbereiding: bij een volgend bezoek gebruiken we de eerder opgeslagen gegevens. Ontbrekende gegevens kunnen opnieuw geladen worden.", subtitle: "Laat dit scherm open totdat alle beschikbare wedstrijdgegevens verwerkt zijn.", tournaments: "Toernooien verwerkt", initial: "Spelersfiche ophalen…", progress: "Wedstrijdgegevens verwerken…", retry: "Opnieuw proberen", error: "Het laden is onderbroken. Je gegevens zijn nog niet volledig.", complete: "Laden voltooid" },
+      en: { title: "Loading your player data", oneTime: "One-time setup: on your next visit, we reuse previously saved data. Missing data may need to be loaded again.", subtitle: "Keep this screen open until all available match data has loaded.", tournaments: "Tournaments processed", initial: "Fetching player profile…", progress: "Processing match data…", retry: "Try again", error: "Loading was interrupted. Your data is not complete.", complete: "Loading complete" },
+      fr: { title: "Chargement de vos données", oneTime: "Préparation initiale : lors de votre prochaine visite, les données déjà enregistrées seront réutilisées. Les données manquantes pourront être rechargées.", subtitle: "Gardez cet écran ouvert jusqu'à la fin du chargement des matchs.", tournaments: "Tournois traités", initial: "Récupération du profil…", progress: "Traitement des matchs…", retry: "Réessayer", error: "Chargement interrompu. Données incomplètes.", complete: "Chargement terminé" },
+      es: { title: "Cargando tus datos", oneTime: "Preparación inicial: en tu próxima visita reutilizaremos los datos guardados. Es posible que deban cargarse de nuevo los datos que falten.", subtitle: "Mantén esta pantalla abierta hasta que se carguen los partidos.", tournaments: "Torneos procesados", initial: "Obteniendo perfil…", progress: "Procesando partidos…", retry: "Reintentar", error: "Carga interrumpida. Datos incompletos.", complete: "Carga completada" },
+      de: { title: "Deine Spielerdaten werden geladen", oneTime: "Einmalige Vorbereitung: Beim nächsten Besuch verwenden wir bereits gespeicherte Daten. Fehlende Daten müssen eventuell erneut geladen werden.", subtitle: "Lass diesen Bildschirm geöffnet, bis alle Matchdaten geladen sind.", tournaments: "Turniere verarbeitet", initial: "Spielerprofil wird geladen…", progress: "Spiele werden verarbeitet…", retry: "Erneut versuchen", error: "Laden unterbrochen. Daten unvollständig.", complete: "Laden abgeschlossen" }
+    };
+    function renderPersonalLoading(state, id) {
+      const l = personalLoadingLabels[currentLanguage] || personalLoadingLabels.en;
+      const total = Number.isFinite(Number(state.totalTournaments)) ? Number(state.totalTournaments) : null;
+      const processed = state.tournaments.filter(t => t.stats || Array.isArray(t.matches) || t.status).length;
+      const count = total === null ? processed : Math.min(processed, total);
+      const percent = total === null ? null : total === 0 ? (state.nextOffset === null ? 100 : 0) : Math.min(100, Math.round(count / total * 100));
+      const error = state.error || (!state.loading && !state.baseLoading && state.baseError && !state.baseLoaded && state.nextOffset !== null ? state.baseError : "");
+      return `<div class="epbf-personal-loading" role="status" aria-live="polite">
+        ${personalPortrait(id, true)}
+        <h1>${safe(l.title)}</h1>
+        <strong class="epbf-loading-player">${safe(state.playerName || personalProfile.name || `EPBF #${id}`)}</strong>
+        <p>${safe(l.subtitle)}</p>
+        <p class="epbf-loading-onetime">${safe(l.oneTime)}</p>
+        <div class="epbf-loading-track" role="progressbar" aria-label="${safe(l.tournaments)}" aria-valuemin="0" ${percent === null ? '' : `aria-valuenow="${percent}" aria-valuemax="100"`}><span style="width:${percent === null ? 0 : percent}%"></span></div>
+        <div class="epbf-loading-count"><strong>${percent === null ? '…' : percent + '%'}</strong><span>${safe(l.tournaments)}: ${count} / ${total === null ? '…' : total}</span></div>
+        <small>${safe(error && state.retryCount <= 5 ? `Verbinding onderbroken. Automatisch opnieuw proberen (${state.retryCount}/5)…` : error ? l.error : state.baseLoading || !state.baseLoaded && !state.loading && !state.baseError ? l.initial : l.progress)}</small>
+        ${error && state.retryCount > 5 ? `<button class="pill" data-epbf-more="${id}">${safe(l.retry)}</button><small>${safe(error)}</small>` : ''}
+      </div>`;
+    }
     function renderPersonal() {
-      return `${detailBack(t("home"))}${title(t("myProfile"), t("playerModeHint"))}<div class="profile-hero">
-          <div class="portrait large">♟</div>
-          <div>
-          <h1>${t("playerMode")}</h1>
-          <p>${t("signInInfo")}</p>
+      const labels = personalText();
+      if (personalProfile && !personalChoosing) {
+        const id = personalProfile.playerId;
+        const state = epbfProfileState(id);
+        if (!state.started) {
+          state.started = true;
+          if (state.baseLoaded) {
+            if (state.nextOffset !== null) Promise.resolve().then(() => loadEPBFProfilePage(id));
+          } else {
+            Promise.resolve().then(() => loadEPBFProfileBase(id));
+          }
+        } else if (state.baseLoaded && state.nextOffset !== null && !state.loading && !state.baseLoading && !state.error) {
+          Promise.resolve().then(() => loadEPBFProfilePage(id));
+        }
+        // Een volledig gecacheerd dashboard verschijnt direct. Verouderde gegevens
+        // worden maximaal om de 6 uur stil op de achtergrond bijgewerkt.
+        const refreshReference = Math.max(state.cachedAt || 0, state.lastRefreshAttemptAt || 0);
+        if (state.nextOffset === null && state.baseLoaded && Date.now() - refreshReference >= EPBF_PROFILE_CACHE_TTL_MS) {
+          Promise.resolve().then(() => refreshEPBFProfileInBackground(id));
+        }
+        // Toon geen nulstatistieken zolang de EPBF-stats nog niet volledig zijn opgehaald.
+        // De progressie komt uit werkelijk verwerkte toernooien, nooit uit een timer.
+        if (state.nextOffset !== null) return renderPersonalLoading(state, id);
+        const played = state.tournaments.reduce((n, x) => n + (x.stats?.played || 0), 0);
+        const wins = state.tournaments.reduce((n, x) => n + (x.stats?.wins || 0), 0);
+        const losses = state.tournaments.reduce((n, x) => n + (x.stats?.losses || 0), 0);
+        return `<div class="epbf-personal-dashboard">
+          <div class="epbf-personal-header">
+            ${personalPortrait(id, true)}
+            <div class="epbf-personal-identity">
+              <strong>${safe(state.playerName || personalProfile.name || `EPBF #${id}`)}</strong>
+              <small>${officialFlag(personalProfile.country)} ${safe(personalProfile.country || "")} · EPBF ID ${id}</small>
+            </div>
           </div>
+          <div class="epbf-personal-circles">
+            <div class="epbf-personal-stat"><span><strong>${played}</strong></span><small>${t("myMatches")}</small></div>
+            <div class="epbf-personal-stat"><span><strong>${wins}</strong></span><small>${safe({nl:"Gewonnen",en:"Won",fr:"Gagnés",es:"Ganados",de:"Gewonnen"}[currentLanguage] || "Won")}</small></div>
+            <div class="epbf-personal-stat"><span><strong>${losses}</strong></span><small>${safe({nl:"Verloren",en:"Lost",fr:"Perdus",es:"Perdidos",de:"Verloren"}[currentLanguage] || "Lost")}</small></div>
+            <div class="epbf-personal-stat"><span><strong>${played ? (100 * wins / played).toFixed(1) + "%" : "–"}</strong></span><small>Win %</small></div>
           </div>
-          <div class="info-card">${infoRow(t("myMatches"), t("noUpcoming"))}${infoRow(t("status"), t("notAvailable"))}</div>
-          <button class="cta" id="demo-sign-in">${t("signIn")}</button>${demo()}`;
+          ${personalMatchSections(state, id)}
+          <button class="feature-card" data-page="history"><span><i data-lucide="history"></i></span>
+            <div><strong>${safe((playerNavLabels[currentLanguage] || playerNavLabels.en).history)}</strong></div><b>›</b></button>
+        </div>`;
+      }
+      return `${title(safe(labels.choose), safe(labels.help))}
+        ${personalProfile ? `<button class="pill" data-cancel-personal="1">${safe(labels.back)}</button>` : ""}
+        <div class="search-wrap"><span>⌕</span>
+        <input id="personal-player-search" type="search" placeholder="${safe(labels.search)}" value="${safe(searchText)}" autocomplete="off" ${personalSaving ? "disabled" : ""}></div>
+        <div class="person-list" id="personal-player-list">${personalSearchList()}</div>
+        ${personalSaving ? `<div class="empty">${safe(labels.saving)}</div>` : ""}
+        ${personalError ? `<div class="empty">${safe(personalError)}</div>` : ""}
+        <p class="epbf-profile-status">${safe(labels.note)}</p>`;
     }
     function languageMenu() {
       const languages = [
@@ -1887,11 +2763,27 @@ function isChampionshipOverview(event) {
           $("#language-overlay").classList.add("hidden");
         return;
       }
-      if (target.matches("[data-language-toggle]")) return languageMenu();
+      if (target.matches("[data-language-toggle]") || target.dataset.settingsLanguage) return languageMenu();
+      if (target.dataset.uploadPersonalPhoto) return $("#personal-photo-file")?.click();
+      if (target.dataset.removePersonalPhoto && personalProfile) {
+        localStorage.removeItem(EPBF_LOCAL_PHOTO_PREFIX + personalProfile.playerId);
+        photoError = "";
+        return render();
+      }
       if (target.dataset.setLanguage) {
         setAppLanguage(target.dataset.setLanguage);
         $("#language-overlay").classList.add("hidden");
         if (mode) render();
+        return;
+      }
+      if (target.dataset.switchToViewer) {
+        // Terug naar het beginscherm met de keuze Speler / Kijker.
+        // Het opgeslagen spelersprofiel blijft behouden.
+        mode = null;
+        page = "home";
+        detail = null;
+        $("#main").classList.add("hidden");
+        $("#splash").classList.remove("hidden");
         return;
       }
       if (target.dataset.mode) return showMode(target.dataset.mode);
@@ -1949,10 +2841,31 @@ function isChampionshipOverview(event) {
         $("#content").scrollTop = scroll;
         return;
       }
-      if (target.dataset.epbfMore) return loadEPBFProfilePage(Number(target.dataset.epbfMore));
+      if (target.dataset.epbfMore) {
+        const id = Number(target.dataset.epbfMore);
+        const state = epbfProfileState(id);
+        if (!state.baseLoaded && !state.baseLoading) loadEPBFProfileBase(id);
+        return loadEPBFProfilePage(id);
+      }
       if (target.dataset.player)
         return openDetail("player", Number(target.dataset.player));
       if (target.dataset.personal) return openDetail("personal", 0);
+      if (target.dataset.personalSettings) return go("settings");
+      if (target.dataset.selectPersonal) return selectPersonalProfile(Number(target.dataset.selectPersonal));
+      if (target.dataset.changePersonal) {
+        detail = { type: "personal", id: 0 };
+        personalChoosing = true;
+        personalError = "";
+        searchText = "";
+        epbfSearchResults = [];
+        epbfSearchState = "idle";
+        return render();
+      }
+      if (target.dataset.cancelPersonal) {
+        personalChoosing = false;
+        personalError = "";
+        return render();
+      }
       if (target.dataset.liveFilter) {
         liveFilter = target.dataset.liveFilter;
         return render();
@@ -1987,6 +2900,13 @@ function isChampionshipOverview(event) {
       }
       if (target.dataset.rankingFilter) {
         rankingFilter = target.dataset.rankingFilter;
+        rankingSearchText = "";
+        rankingCountryFilter = "";
+        return render();
+      }
+      if (target.dataset.retryRanking) {
+        epbfRankingErrors.delete(rankingFilter);
+        loadEPBFRanking(rankingFilter, true);
         return render();
       }
       if (target.dataset.tournamentTab) {
@@ -2004,6 +2924,12 @@ function isChampionshipOverview(event) {
       if (target.id === "demo-sign-in") alert(t("signInInfo"));
     });
     document.addEventListener("change", (e) => {
+      if (e.target.id === "ranking-country-filter") {
+        rankingCountryFilter = e.target.value;
+        const list = $("#ranking-list");
+        if (list) list.innerHTML = renderRankingList();
+        return;
+      }
       if (e.target.id === "epbf-participant-country-filter") {
         officialParticipantCountryFilter = e.target.value;
         const scrollTop = $("#content").scrollTop;
@@ -2023,19 +2949,34 @@ function isChampionshipOverview(event) {
         $("#content").scrollTop = scrollTop;
       }
     });
+    document.addEventListener("change", (e) => {
+      if (e.target.id === "personal-photo-file") {
+        const file = e.target.files?.[0];
+        if (file) savePersonalPhoto(file);
+      }
+    });
     document.addEventListener("input", (e) => {
-      if (e.target.id !== "player-search") return;
+      if (e.target.id === "ranking-search") {
+        rankingSearchText = e.target.value;
+        const list = $("#ranking-list");
+        if (list) list.innerHTML = renderRankingList();
+        return;
+      }
+      if (e.target.id !== "player-search" && e.target.id !== "personal-player-search") return;
       searchText = e.target.value;
-      const list = players.filter((p) =>
-        `${p.name} ${p.country}`
-          .toLocaleLowerCase()
-          .includes(searchText.toLocaleLowerCase()),
-      );
-      $("#player-list").innerHTML =
-        list.map((p) => playerRow(p)).join("") ||
-        `<div class="empty">${t("noResults")}</div>`;
+      clearTimeout(epbfSearchTimer);
+      if (epbfSearchController) epbfSearchController.abort();
+      const requestId = ++epbfSearchRequestId;
+      epbfSearchResults = [];
+      epbfSearchState = searchText.trim() ? "loading" : "idle";
+      refreshEPBFSearchList();
+      if (searchText.trim()) {
+        const query = searchText.trim();
+        epbfSearchTimer = setTimeout(() => searchEPBFPlayers(query, requestId), 350);
+      }
     });
     setAppLanguage(currentLanguage);
+    if (personalProfile) showMode("player");
     refreshOfficialCalendar();
     refreshOfficialTournaments();
 

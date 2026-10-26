@@ -1425,3 +1425,188 @@ body { min-height: 100%; min-height: 100dvh; }
   .mini-match { column-gap: 7px; padding: 10px; }
   .mini-players > span { font-size: 11px; }
 }
+
+/* EPBF spelersmodus - mockup 5 (26-10-2026) */
+.bottom-nav.player-navigation { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.bottom-nav.player-navigation .nav-item { min-width: 0; padding: 4px 1px; }
+.bottom-nav.player-navigation .nav-item small { font-size: 8px; line-height: 1.12; max-width: 100%; overflow-wrap: anywhere; text-align: center; }
+.bottom-nav.player-navigation .nav-icon svg { width: 21px; height: 21px; }
+.epbf-personal-dashboard { padding: 18px 1px 8px; }
+.epbf-personal-header { display: flex; align-items: center; gap: 15px; padding: 12px 5px 23px; }
+.epbf-personal-header .portrait.large { width: 74px; height: 74px; flex: 0 0 74px; border-radius: 50%; overflow: hidden; }
+.epbf-personal-identity { flex: 1; min-width: 0; }
+.epbf-personal-identity strong { display: block; font-size: clamp(17px, 4.6vw, 23px); line-height: 1.22; overflow-wrap: anywhere; }
+.epbf-personal-identity small { display: block; margin-top: 8px; color: #aac6d5; font-size: 12px; }
+.epbf-personal-circles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 6px 0 24px; }
+.epbf-personal-stat { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.epbf-personal-stat > span { width: 100%; aspect-ratio: 1; max-width: 98px; border: 2px solid #2cd99a; border-radius: 50%; background: #102b40; display: flex; align-items: center; justify-content: center; }
+.epbf-personal-stat strong { font-size: clamp(16px, 4vw, 23px); color: #eafef5; letter-spacing: -0.5px; }
+.epbf-personal-stat small { color: #b7cbd7; font-size: clamp(9px, 2.5vw, 11px); text-align: center; line-height: 1.25; }
+@media (max-width: 350px) { .bottom-nav.player-navigation .nav-item small { font-size: 7px; } .epbf-personal-circles { gap: 5px; } }
+
+/* Spelersdashboard: wedstrijdkaarten en liveblok */
+.epbf-personal-dashboard { padding-bottom: 24px; }
+.epbf-personal-dashboard .epbf-personal-circles { margin-bottom: 19px; }
+.epbf-dashboard-section { margin: 17px 0 19px; }
+.epbf-dashboard-section .section-heading { margin: 0 0 9px; }
+.epbf-dashboard-match, .epbf-dashboard-empty { display: block; width: 100%; padding: 14px 13px; border: 1px solid #24516a; border-radius: 12px; background: linear-gradient(115deg, #102e46, #0a2136); color: #f4f8ff; text-align: left; }
+.epbf-dashboard-match small { display: block; color: #a9c3d4; font-size: 10px; line-height: 1.5; }
+.epbf-dashboard-match-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 8px 0; }
+.epbf-dashboard-match-line strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.epbf-dashboard-match-line b { white-space: nowrap; font-size: 17px; }
+.epbf-dashboard-empty { color: #afc8d9; font-size: 12px; line-height: 1.5; }
+.epbf-dashboard-match-button { cursor: pointer; font: inherit; }
+.epbf-dashboard-section .mini-match { margin-bottom: 0; }
+
+/* Persoonlijke EPBF-laadpagina: echte voortgang per verwerkt toernooi */
+.epbf-personal-loading { min-height: 430px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; padding: 35px 12px; text-align: center; }
+.epbf-personal-loading .portrait.large { width: 76px; height: 76px; border-radius: 50%; overflow: hidden; }
+.epbf-personal-loading h1 { font-size: 20px; line-height: 1.3; margin: 5px 0 0; }
+.epbf-loading-player { font-size: 15px; color: #e5f8ff; }
+.epbf-personal-loading p { font-size: 13px; line-height: 1.6; color: #b8d0de; max-width: 310px; margin: 0 0 8px; }
+.epbf-loading-track { width: 100%; height: 13px; background: #16344b; border: 1px solid #31556c; border-radius: 99px; overflow: hidden; }
+.epbf-loading-track > span { display: block; height: 100%; background: #20d99b; border-radius: inherit; transition: width .3s ease; }
+.epbf-loading-count { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: #c2d8e5; }
+.epbf-loading-count strong { color: #24e4a4; font-size: 19px; }
+.epbf-personal-loading > small { font-size: 12px; color: #a9c5d5; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* EPBF - gecentreerde bovenbalk (logo en titel blijven samen). */
+.topbar {
+  position: relative;
+  justify-content: center;
+  min-height: calc(70px + env(safe-area-inset-top, 0px));
+  height: calc(70px + env(safe-area-inset-top, 0px));
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 56px 8px;
+  gap: 0;
+}
+.topbar .brand {
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 auto;
+  justify-content: center;
+  gap: 9px;
+  text-align: left;
+}
+.topbar .brand img { width: 38px; height: 38px; flex-shrink: 0; }
+.topbar .brand strong { font-size: 19px; line-height: 1.1; }
+.topbar .brand small { font-size: 11px; line-height: 1.15; margin-top: 4px; }
+.topbar .back-header {
+  position: absolute;
+  left: 13px;
+  top: calc(50% + env(safe-area-inset-top, 0px) / 2);
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 36px;
+  height: 38px;
+  border-radius: 11px;
+}
+.topbar [data-language-toggle] {
+  position: absolute;
+  right: 12px;
+  top: calc(50% + env(safe-area-inset-top, 0px) / 2);
+  transform: translateY(-50%);
+  z-index: 2;
+}
+@media (max-width: 355px) {
+  .topbar { padding-left: 48px; padding-right: 48px; }
+  .topbar .brand img { width: 33px; height: 33px; }
+  .topbar .brand strong { font-size: 17px; }
+}
+
+
+/* EPBF bovenbalk: alleen het originele logo, modus eronder, discrete disclaimer. */
+.topbar {
+  height: calc(94px + env(safe-area-inset-top, 0px));
+  min-height: calc(94px + env(safe-area-inset-top, 0px));
+  padding-top: calc(6px + env(safe-area-inset-top, 0px));
+  padding-bottom: 17px;
+}
+.topbar .brand {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+}
+.topbar .brand img {
+  width: 43px;
+  height: 43px;
+}
+.topbar .brand strong { display: none; }
+.topbar .brand small {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.topbar::after {
+  content: attr(data-unofficial-notice);
+  position: absolute;
+  bottom: 5px;
+  left: 52px;
+  right: 52px;
+  text-align: center;
+  color: #7592a7;
+  font-size: 8px;
+  line-height: 1.15;
+  pointer-events: none;
+}
+@media (max-width: 355px) {
+  .topbar .brand img { width: 39px; height: 39px; }
+  .topbar::after { font-size: 7px; left: 45px; right: 45px; }
+}
+
+/* Compact spelersdashboard: alleen spelers-home, geen andere schermen. */
+.topbar {
+  height: calc(82px + env(safe-area-inset-top, 0px));
+  min-height: calc(82px + env(safe-area-inset-top, 0px));
+  padding-bottom: 15px;
+}
+.topbar .brand img { width: 37px; height: 37px; }
+.topbar::after { bottom: 4px; }
+.epbf-personal-dashboard { padding: 6px 1px 10px; }
+.epbf-personal-dashboard .epbf-personal-header {
+  gap: 12px;
+  padding: 5px 3px 10px;
+}
+.epbf-personal-dashboard .epbf-personal-header .portrait.large {
+  width: 58px; height: 58px; flex-basis: 58px;
+}
+.epbf-personal-dashboard .epbf-personal-identity strong { font-size: clamp(15px, 4.2vw, 20px); }
+.epbf-personal-dashboard .epbf-personal-identity small { margin-top: 4px; font-size: 10px; }
+.epbf-personal-dashboard .epbf-personal-circles {
+  gap: 8px;
+  margin: 4px 0 11px;
+}
+.epbf-personal-dashboard .epbf-personal-stat { gap: 5px; }
+.epbf-personal-dashboard .epbf-personal-stat > span {
+  width: min(100%, 65px);
+  max-width: 65px;
+  aspect-ratio: 1;
+}
+.epbf-personal-dashboard .epbf-personal-stat strong { font-size: clamp(14px, 3.6vw, 18px); }
+.epbf-personal-dashboard .epbf-personal-stat small { font-size: clamp(8px, 2.2vw, 10px); }
+.epbf-personal-dashboard .epbf-dashboard-section { margin: 10px 0 12px; }
+.epbf-personal-dashboard .epbf-dashboard-section .section-heading { margin: 0 0 6px; }
+.epbf-personal-dashboard .epbf-dashboard-match,
+.epbf-personal-dashboard .epbf-dashboard-empty { padding: 10px 11px; border-radius: 10px; }
+.epbf-personal-dashboard .epbf-dashboard-match-line { margin: 5px 0; }
+.epbf-personal-dashboard .epbf-dashboard-match-line strong { font-size: 12px; }
+.epbf-personal-dashboard .epbf-dashboard-match-line b { font-size: 15px; }
+.epbf-personal-dashboard .epbf-dashboard-section .mini-match {
+  padding: 9px 11px;
+  row-gap: 5px;
+}
+.epbf-personal-dashboard .epbf-dashboard-section .mini-players { gap: 6px; }
+.epbf-personal-dashboard .epbf-dashboard-section .mini-scores { gap: 6px; }
+.epbf-personal-dashboard > .feature-card {
+  margin-top: 9px;
+  padding: 10px 12px;
+  min-height: 49px;
+}
+.epbf-personal-dashboard > .feature-card > span { font-size: 23px; }
+@media (max-width: 350px) {
+  .epbf-personal-dashboard .epbf-personal-stat > span { width: min(100%, 58px); }
+}
