@@ -860,7 +860,14 @@ function officialFlag(country) {
           <small>${safe(label)}</small></button>`;
       }).join("");
     }
+    // Bewaar het vorige app-scherm voor de terugknop.
+    const epbfScreenHistory = [];
+    function rememberEPBFScreen() {
+      epbfScreenHistory.push({ page, detail: detail ? { ...detail } : null, tournamentTab, tournamentView, tournamentFilter, tournamentArchiveCategory, playerTab, matchTab });
+      if (epbfScreenHistory.length > 40) epbfScreenHistory.shift();
+    }
     function showMode(next) {
+      epbfScreenHistory.length = 0;
       mode = next;
       $("#splash").classList.add("hidden");
       $("#main").classList.remove("hidden");
@@ -870,6 +877,7 @@ function officialFlag(country) {
       render();
     }
     function go(next) {
+      if (page !== next || detail) rememberEPBFScreen();
       page = next;
       detail = mode === "player" && next === "home" ? { type: "personal", id: 0 }
         : mode === "player" && next === "settings" ? { type: "personal-settings", id: 0 }
@@ -883,10 +891,25 @@ function officialFlag(country) {
       render();
     }
     function openDetail(type, id) {
+      rememberEPBFScreen();
       detail = { type, id };
       render();
     }
     function back() {
+      const previous = epbfScreenHistory.pop();
+      if (previous) {
+        page = previous.page;
+        detail = previous.detail;
+        tournamentTab = previous.tournamentTab;
+        tournamentView = previous.tournamentView;
+        tournamentFilter = previous.tournamentFilter;
+        tournamentArchiveCategory = previous.tournamentArchiveCategory;
+        playerTab = previous.playerTab;
+        matchTab = previous.matchTab;
+        render();
+        return;
+      }
+      // Terugval voor schermen die zonder navigatiehistoriek geopend zijn.
       if (detail?.type === "personal-settings") {
         page = "home";
         detail = { type: "personal", id: 0 };
@@ -916,7 +939,9 @@ function officialFlag(country) {
       };
       const headerBar = document.querySelector(".topbar");
       if (headerBar) headerBar.dataset.unofficialNotice = unofficialNotice[currentLanguage] || unofficialNotice.en;
-      $("#back").classList.toggle("hidden", (mode === "player" && page === "home" && detail?.type === "personal") || (!detail && page === "home"));
+      const backButton = $("#back");
+      backButton.textContent = "‹";
+      backButton.classList.toggle("hidden", !epbfScreenHistory.length && ((mode === "player" && page === "home" && detail?.type === "personal") || (!detail && page === "home")));
       nav();
       // In spelersmodus staat de taalkeuze onder Instellingen; in kijkersmodus blijft ze bovenaan.
       // De splash behoudt zijn taalkeuze; enkel de hoofdheader wordt verborgen in spelersmodus.
@@ -1404,7 +1429,7 @@ function officialFlag(country) {
       return renderPersonal();
     }
     function detailBack(label) {
-      return `<button class="detail-back" data-back="1">‹ <span>${label}</span>
+      return `<button class="detail-back" data-back="1">‹ <span>${({nl:"Terug",en:"Back",fr:"Retour",es:"Volver",de:"Zurück"}[currentLanguage] || "Back")}</span>
           </button>`;
     }
     function renderMatchDetail(m) {
@@ -2779,6 +2804,7 @@ function isChampionshipOverview(event) {
               <strong>${safe(state.playerName || personalProfile.name || `EPBF #${id}`)}</strong>
               <small>${officialFlag(personalProfile.country)} ${safe(personalProfile.country || "")} · EPBF ID ${id}</small>
             </div>
+            <button type="button" data-refresh-personal="1" aria-label="${safe(({nl:"Vernieuwen",en:"Refresh",fr:"Actualiser",es:"Actualizar",de:"Aktualisieren"}[currentLanguage] || "Refresh"))}" title="${safe(({nl:"Vernieuwen",en:"Refresh",fr:"Actualiser",es:"Actualizar",de:"Aktualisieren"}[currentLanguage] || "Refresh"))}" style="margin-left:auto;flex:0 0 auto;display:grid;place-items:center;width:42px;height:42px;border:1px solid #20d69a;border-radius:12px;background:#102d43;color:#20d69a;cursor:pointer;"><i data-lucide="refresh-cw"></i></button>
           </div>
           <div class="epbf-personal-circles">
             <div class="epbf-personal-stat"><span><strong>${played}</strong></span><small>${t("myMatches")}</small></div>
@@ -2856,6 +2882,14 @@ function isChampionshipOverview(event) {
       if (target.dataset.page) return go(target.dataset.page);
       if (target.dataset.officialMatch)
         return openDetail("official-match", Number(target.dataset.officialMatch));
+      if (target.dataset.refreshPersonal && personalProfile) {
+        const id = personalProfile.playerId;
+        // Vernieuw de actuele wedstrijden, livefeed en statistieken zonder het dashboard te verlaten.
+        ensureCurrentPlayerMatches(id, true);
+        refreshOfficialLive();
+        refreshEPBFProfileInBackground(id);
+        return;
+      }
       if (target.dataset.refreshLive) return refreshOfficialLive();
       if (target.dataset.refreshEvent || target.dataset.retryEvent) return refreshVisibleEvent();
       if (target.dataset.match)
