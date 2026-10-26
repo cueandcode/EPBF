@@ -1644,3 +1644,23 @@ body { min-height: 100%; min-height: 100dvh; }
     overscroll-behavior-y: contain;
   }
 }
+
+/* EPBF iPhone correctie: vul de volledige standalone schermhoogte.
+   Safari behoudt de stabiele kleine viewport uit de vorige correctie. */
+@media (max-width: 599px) and (display-mode: standalone) {
+  html, body {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .phone {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+  .main { height: 100%; min-height: 0; }
+  .bottom-nav {
+    margin-top: auto;
+    flex-shrink: 0;
+  }
+}
