@@ -120,6 +120,7 @@
     // Eventgegevens worden per EPBF-tornooi opgehaald en lokaal in geheugen bewaard.
     const officialEventDetails = new Map();
     const officialEventRequests = new Map();
+    const officialEventFailures = new Set();
 
     // De actuele Spaanse EuroTours gebruiken elk hun eigen EPBF-registratiepagina.
     // Historische toernooien blijven hun eigen evenementgegevens gebruiken.
@@ -1607,12 +1608,17 @@ function isChampionshipOverview(event) {
         const data = await response.json();
         if (!data?.success) throw new Error(data?.error || "De EPBF gaf geen geldige tornooigegevens terug.");
         officialEventDetails.set(key, data);
+        officialEventFailures.delete(key);
+        officialEventError = "";
         return data;
       })();
 
       officialEventRequests.set(key, request);
       try {
         return await request;
+      } catch (error) {
+        officialEventFailures.add(key);
+        throw error;
       } finally {
         officialEventRequests.delete(key);
         // Werk het zichtbare tornooi bij, ook als de aanvraag eerder
@@ -1632,11 +1638,63 @@ function isChampionshipOverview(event) {
     function ensureOfficialEventDetail(event) {
       if (!event?.id) return;
       const key = `${event.id}:${epbfCategoryForEvent(event)}`;
-      if (officialEventDetails.has(key) || officialEventRequests.has(key)) return;
+      if (officialEventDetails.has(key) || officialEventRequests.has(key) || officialEventFailures.has(key)) return;
       loadOfficialEventDetail(event).catch(error => {
+        officialEventFailures.add(key);
         officialEventError = String(error?.message || error);
         console.error("EPBF event details:", error);
       });
+    }
+
+    const eventRefreshLabels = {
+      nl: ["Vernieuwen", "Vernieuwen…"],
+      en: ["Refresh", "Refreshing…"],
+      fr: ["Actualiser", "Actualisation…"],
+      es: ["Actualizar", "Actualizando…"],
+      de: ["Aktualisieren", "Aktualisierung…"]
+    };
+
+    async function refreshVisibleEvent() {
+      if (!detail || !["tournament", "archive-tournament", "championship-discipline"].includes(detail.type)) return;
+      const event = detail.type === "archive-tournament"
+        ? officialArchiveTournaments.find(e => String(e.id) === String(detail.id))
+        : detail.type === "championship-discipline"
+          ? championshipDisciplineEvents.get(String(detail.id))
+          : officialTournaments.find(e => String(e.id) === String(detail.id));
+      if (!event) return;
+      if (isChampionshipOverview(event)) {
+        const parentId = championshipParentId(event);
+        if (!parentId || championshipDisciplinesRequests.has(parentId)) return;
+        const previous = championshipDisciplinesCache.get(parentId);
+        championshipDisciplinesCache.delete(parentId);
+        officialEventError = "";
+        render();
+        try { await loadChampionshipDisciplines(event); }
+        catch (error) {
+          if (previous) championshipDisciplinesCache.set(parentId, previous);
+          officialEventError = String(error?.message || error);
+        }
+      } else {
+        const key = `${event.id}:${epbfCategoryForEvent(event)}`;
+        if (officialEventRequests.has(key)) return;
+        const previous = officialEventDetails.get(key);
+        officialEventDetails.delete(key);
+        officialEventFailures.delete(key);
+        officialEventError = "";
+        render();
+        try { await loadOfficialEventDetail(event); }
+        catch (error) {
+          if (previous) officialEventDetails.set(key, previous);
+          else officialEventFailures.add(key);
+          officialEventError = String(error?.message || error);
+        }
+      }
+      if (detail && String(detail.id) === String(event.id)) {
+        const content = $("#content");
+        const scrollTop = content?.scrollTop || 0;
+        render();
+        if (content) content.scrollTop = scrollTop;
+      }
     }
 
     function epbfEventData(e) {
@@ -2249,6 +2307,12 @@ function isChampionshipOverview(event) {
           ${safe(isArchive ? "" : dateRange(e))}</small>
         </div></div>
         ${pills(tabs, tournamentTab, "tournament-tab")}
+        <div style="display:flex;justify-content:flex-end;margin:10px 0 12px;">
+          <button class="pill" data-refresh-event="1" ${(!championshipOverview && officialEventRequests.has(`${e.id}:${categoryInfo}`)) || (championshipOverview && championshipDisciplinesRequests.has(championshipId)) ? "disabled" : ""}>
+            <i data-lucide="refresh-cw" style="width:15px;height:15px;vertical-align:middle;margin-right:5px;"></i>
+            ${safe((eventRefreshLabels[currentLanguage] || eventRefreshLabels.en)[(!championshipOverview && officialEventRequests.has(`${e.id}:${categoryInfo}`)) || (championshipOverview && championshipDisciplinesRequests.has(championshipId)) ? 1 : 0])}
+          </button>
+        </div>
         ${body}
         ${data ? "" : `<div class="epbf-official-link-wrap">
           <a class="epbf-official-link" href="${safe(e.url || e.website || base.url)}" target="_blank" rel="noopener noreferrer">
@@ -2793,6 +2857,7 @@ function isChampionshipOverview(event) {
       if (target.dataset.officialMatch)
         return openDetail("official-match", Number(target.dataset.officialMatch));
       if (target.dataset.refreshLive) return refreshOfficialLive();
+      if (target.dataset.refreshEvent || target.dataset.retryEvent) return refreshVisibleEvent();
       if (target.dataset.match)
         return openDetail("match", Number(target.dataset.match));
       if (target.dataset.championshipDiscipline) {
