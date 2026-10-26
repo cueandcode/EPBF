@@ -1611,69 +1611,16 @@ body { min-height: 100%; min-height: 100dvh; }
   .epbf-personal-dashboard .epbf-personal-stat > span { width: min(100%, 58px); }
 }
 
-
-/* EPBF iPhone: stabiele viewport en vaste navigatie (26-10-2026).
-   De bestaande schermen en visuele opmaak blijven ongewijzigd. */
+/* EPBF - eenduidige mobiele schermindeling (26-10-2026)
+   Navigatie staat vast onderaan de app; inhoud scrolt onafhankelijk.
+   Geen model-specifieke pixelcorrecties. */
 @media (max-width: 599px) {
-  html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-  }
-  .phone {
-    height: 100vh; /* fallback */
-    height: 100svh; /* stabiel bij tonen/verbergen van Safari-balken */
-    min-height: 0;
-    overflow: hidden;
-  }
-  .main {
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .topbar, .bottom-nav {
-    flex-shrink: 0;
-  }
-  .content {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
-  }
-}
-
-/* EPBF iPhone correctie: vul de volledige standalone schermhoogte.
-   Safari behoudt de stabiele kleine viewport uit de vorige correctie. */
-@media (max-width: 599px) and (display-mode: standalone) {
-  html, body {
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .phone {
-    height: 100vh;
-    height: 100dvh;
-    min-height: 0;
-  }
-  .main { height: 100%; min-height: 0; }
-  .bottom-nav {
-    margin-top: auto;
-    flex-shrink: 0;
-  }
-}
-
-
-/* EPBF iPhone: vul het volledige scherm in standalone modus.
-   Voorkomt dat 100svh een lege strook onder de navigatie laat. */
-@media (max-width: 599px) and (display-mode: standalone) {
   html, body {
     width: 100%;
     height: 100%;
     margin: 0;
     overflow: hidden;
+    background: #071c31;
   }
   .phone {
     position: fixed;
@@ -1684,68 +1631,37 @@ body { min-height: 100%; min-height: 100dvh; }
     min-height: 0;
     margin: 0;
     overflow: hidden;
+    border-radius: 0;
   }
   .main {
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .content {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .bottom-nav {
-    flex: 0 0 auto;
-    margin-top: 0;
-  }
-}
-
-/* EPBF - iPhone volledige schermhoogte */
-
-@media (max-width: 599px) {
-  html,
-  body {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    overflow: hidden;
-  }
-
-  .phone {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
-    height: 100% !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    overflow: hidden !important;
-  }
-
-  .main {
+    position: relative;
     display: flex;
     flex-direction: column;
+    width: 100%;
     height: 100%;
     min-height: 0;
+    overflow: hidden;
   }
-
-  .topbar,
-  .bottom-nav {
-    flex-shrink: 0;
-  }
-
+  .topbar { flex: 0 0 auto; }
   .content {
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
   }
-
   .bottom-nav {
-    margin-top: auto;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    width: 100%;
+    height: calc(62px + env(safe-area-inset-bottom, 0px));
+    margin: 0;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: #071c31;
   }
+  .content { padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
 }
