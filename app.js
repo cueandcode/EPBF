@@ -1605,6 +1605,8 @@ function isChampionshipOverview(event) {
         e?.name, e?.website, e?.url
       ].filter(Boolean).join(" ").toLowerCase();
 
+      const currentEurotour = currentSpanishOpenCategory(e);
+      if (currentEurotour) return currentEurotour;
       if (/hey.?ball|heyball/.test(source)) return "hey-ball";
       if (/women|ladies|dames/.test(source) && /euro.?tour/.test(source)) return "eurotour-women";
       if (/youth|junior|jeugd/.test(source)) return "youth-tour";
@@ -1627,7 +1629,9 @@ function isChampionshipOverview(event) {
 
       const request = (async () => {
         const category = epbfCategoryForEvent(event);
-        const url = `${EPBF_EVENT_API}/${encodeURIComponent(category)}/${encodeURIComponent(event.id)}`;
+        const url = currentSpanishOpenCategory(event)
+          ? `https://epbf-api.nicolasmintjens.workers.dev/current-eurotour-draw/${encodeURIComponent(category)}`
+          : `${EPBF_EVENT_API}/${encodeURIComponent(category)}/${encodeURIComponent(event.id)}`;
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) throw new Error(`EPBF-eventgegevens: HTTP ${response.status}`);
         const data = await response.json();
@@ -2630,6 +2634,50 @@ function isChampionshipOverview(event) {
       return null;
     }
 
+    // Gebruik de reeds werkende Euro Tour-draw ook voor de persoonlijke volgende wedstrijd.
+    function ensurePersonalEurotourDraws() {
+      for (const event of officialTournaments) {
+        if (!currentSpanishOpenCategory(event)) continue;
+        const key = `${event.id}:${epbfCategoryForEvent(event)}`;
+        if (officialEventDetails.has(key) || officialEventRequests.has(key) || officialEventFailures.has(key)) continue;
+        Promise.resolve().then(() => loadOfficialEventDetail(event)).then(() => {
+          if (mode === "player" && detail?.type === "personal") {
+            const content = $("#content");
+            const pos = content?.scrollTop || 0;
+            render();
+            if (content) content.scrollTop = pos;
+          }
+        }).catch(error => console.warn("EPBF personal Euro Tour draw:", error));
+      }
+    }
+    function personalEurotourUpcoming(playerId) {
+      const selectedName = String(personalProfile?.name || "").trim().toLowerCase();
+      const normalizeName = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const nameParts = normalizeName(selectedName).split(" ").filter(Boolean);
+      const matchesPlayer = player => Number(player?.playerId) === Number(playerId) ||
+        (nameParts.length >= 2 && nameParts.every(part => normalizeName(epbfPlayerName(player)).split(" ").includes(part)));
+      const found = [];
+      for (const event of officialTournaments) {
+        if (!currentSpanishOpenCategory(event)) continue;
+        const data = epbfEventData(event);
+        for (const match of Array.isArray(data?.matches) ? data.matches : []) {
+          const players = Array.isArray(match.players) ? match.players : [];
+          if (players.length < 2 || !players.some(matchesPlayer)) continue;
+          const status = String(match.status || "").toUpperCase();
+          if (["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO"].includes(status)) continue;
+          const a = Number(match.scoreA), b = Number(match.scoreB);
+          if (Number.isFinite(a) && Number.isFinite(b) && (a !== 0 || b !== 0) && !["RUNNING", "SCHEDULED"].includes(status)) continue;
+          const playerIndex = players.findIndex(matchesPlayer);
+          found.push({ match: { ...match, playerA: players[0], playerB: players[1], status: status === "RUNNING" ? "RUNNING" : "SCHEDULED", discipline: event.name, __personalOpponent: players[1 - playerIndex] }, source: "eurotour", event });
+        }
+      }
+      return found.sort((a,b) => {
+        const liveDiff = Number(b.match.status === "RUNNING") - Number(a.match.status === "RUNNING");
+        if (liveDiff) return liveDiff;
+        const dateDiff = String(a.event.start || "").localeCompare(String(b.event.start || ""));
+        return dateDiff || String(a.match.scheduled || "").localeCompare(String(b.match.scheduled || "")) || String(a.match.matchNumber || "").localeCompare(String(b.match.matchNumber || ""), undefined, {numeric:true});
+      });
+    }
     function personalMatchSections(state, playerId) {
       const l = personalDashboardLabels[currentLanguage] || personalDashboardLabels.en;
       const currentResult = latestCurrentTournamentResult(playerId);
@@ -2707,7 +2755,8 @@ function isChampionshipOverview(event) {
             status: (Number(m.scoreA) > 0 || Number(m.scoreB) > 0) ? "RUNNING" : "SCHEDULED",
             discipline: "EPBF"
           }, source: "player-draw" })) : [];
-      const upcomingCandidates = [...currentTournamentUpcoming, ...liveFeedUpcoming, ...playerDrawUpcoming];
+      const eurotourUpcoming = personalEurotourUpcoming(playerId);
+      const upcomingCandidates = [...eurotourUpcoming, ...currentTournamentUpcoming, ...liveFeedUpcoming, ...playerDrawUpcoming];
       // Een wedstrijd die al bezig is heeft voorrang; daarna gebruik de eerstvolgende
       // beschikbare wedstrijd-ID binnen de officiële draw. Dedupliceer dezelfde match.
       const seenUpcoming = new Set();
@@ -2730,14 +2779,14 @@ function isChampionshipOverview(event) {
       const selectedUpcoming = uniqueUpcoming[0] || null;
       const current = selectedUpcoming?.match || null;
       const currentSource = selectedUpcoming?.source || "";
-      const other = current && (Number(current.playerA?.playerId) === playerId ? current.playerB : current.playerA);
+      const other = current && (current.__personalOpponent || (Number(current.playerA?.playerId) === playerId ? current.playerB : current.playerA));
       const rawCurrentStatus = current ? normalizedMatchStatus(current) : "";
       const currentStatusLabel = current && ["UNKNOWN", "NOT_STARTED", "PENDING", "WAITING", ""].includes(rawCurrentStatus) &&
         hasValidScore(current) && Number(current.scoreA) === 0 && Number(current.scoreB) === 0
         ? ({nl:"GEPLAND", en:"SCHEDULED", fr:"PROGRAMMÉ", es:"PROGRAMADO", de:"GEPLANT"}[currentLanguage] || "SCHEDULED")
         : current ? officialStatus(rawCurrentStatus) : "";
       const upcomingHtml = current ? `${currentSource === "live" ? `<button class="epbf-dashboard-match epbf-dashboard-match-button" data-official-match="${Number(current.id)}">` : `<div class="epbf-dashboard-match">`}
-        <small>${safe(l.scheduled)} · ${safe(current.discipline || "EPBF")} · ${safe(current.table || "")}</small>
+        <small>${safe(l.scheduled)} · ${safe(current.discipline || "EPBF")} · ${safe(current.scheduled || "")}${current.matchNumber ? ` · ${safe(current.matchNumber)}` : ""}${current.table ? ` · ${safe(current.table)}` : ""}</small>
         <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(other?.name || "–")}</strong><span class="badge ${rawCurrentStatus === "RUNNING" ? "green" : ""}">${safe(currentStatusLabel)}</span></div>
       ${currentSource === "live" ? `</button>` : `</div>`}` : `<div class="epbf-dashboard-empty">${safe(l.noNext)}</div>`;
       return `<div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.last)}</strong></div>${recentHtml}</div>
@@ -2774,6 +2823,7 @@ function isChampionshipOverview(event) {
       const labels = personalText();
       if (personalProfile && !personalChoosing) {
         const id = personalProfile.playerId;
+        ensurePersonalEurotourDraws();
         const state = epbfProfileState(id);
         if (!state.started) {
           state.started = true;
@@ -2886,6 +2936,12 @@ function isChampionshipOverview(event) {
         const id = personalProfile.playerId;
         // Vernieuw de actuele wedstrijden, livefeed en statistieken zonder het dashboard te verlaten.
         ensureCurrentPlayerMatches(id, true);
+        for (const event of officialTournaments.filter(currentSpanishOpenCategory)) {
+          const key = `${event.id}:${epbfCategoryForEvent(event)}`;
+          officialEventDetails.delete(key);
+          officialEventFailures.delete(key);
+        }
+        ensurePersonalEurotourDraws();
         refreshOfficialLive();
         refreshEPBFProfileInBackground(id);
         return;
