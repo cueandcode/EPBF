@@ -2678,9 +2678,54 @@ function isChampionshipOverview(event) {
         return dateDiff || String(a.match.scheduled || "").localeCompare(String(b.match.scheduled || "")) || String(a.match.matchNumber || "").localeCompare(String(b.match.matchNumber || ""), undefined, {numeric:true});
       });
     }
+    // De Euro Tour-loting wordt ook voor de LAATSTE afgewerkte wedstrijd gebruikt.
+    // Een score alleen is onvoldoende: een lopende wedstrijd mag niet als eindresultaat verschijnen.
+    function personalEurotourLatestCompleted(playerId) {
+      const normalizeName = value => String(value || "").normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const nameParts = normalizeName(personalProfile?.name).split(" ").filter(Boolean);
+      const matchesPlayer = player => Number(player?.playerId) === Number(playerId) ||
+        (nameParts.length >= 2 && nameParts.every(part => normalizeName(epbfPlayerName(player)).split(" ").includes(part)));
+      const finishedStatuses = new Set(["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO"]);
+      const candidates = [];
+      for (const event of officialTournaments) {
+        if (!currentSpanishOpenCategory(event)) continue;
+        const data = epbfEventData(event);
+        for (const match of Array.isArray(data?.matches) ? data.matches : []) {
+          const players = Array.isArray(match.players) ? match.players : [];
+          if (players.length < 2) continue;
+          const index = players.findIndex(matchesPlayer);
+          if (index < 0) continue;
+          if (match.scoreA == null || match.scoreB == null ||
+              String(match.scoreA).trim() === "" || String(match.scoreB).trim() === "") continue;
+          const a = Number(match.scoreA), b = Number(match.scoreB);
+          if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) continue;
+          const status = String(match.status || "").trim().toUpperCase();
+          const target = Number(match.cells?.[3]);
+          // De vierde EPBF-drawcel bevat doorgaans de race-to score.
+          const reachedTarget = Number.isFinite(target) && target > 0 && (a >= target || b >= target);
+          if (!finishedStatuses.has(status) && !reachedTarget) continue;
+          const score = index === 0 ? a : b;
+          const opponentScore = index === 0 ? b : a;
+          candidates.push({
+            match, event, opponent: players[1 - index], score, opponentScore,
+            result: score > opponentScore ? "win" : "loss"
+          });
+        }
+      }
+      // De nieuwste ronde binnen hetzelfde evenement staat doorgaans later in de draw.
+      return candidates.sort((a, b) =>
+        String(b.event.start || "").localeCompare(String(a.event.start || "")) ||
+        Number(b.match.sourceOrder ?? b.match.__sourceIndex ?? 0) - Number(a.match.sourceOrder ?? a.match.__sourceIndex ?? 0)
+      )[0] || null;
+    }
+
     function personalMatchSections(state, playerId) {
       const l = personalDashboardLabels[currentLanguage] || personalDashboardLabels.en;
       const currentResult = latestCurrentTournamentResult(playerId);
+      const eurotourResult = personalEurotourLatestCompleted(playerId);
+      // De actuele Spanish Open (29-10-2026) is recenter dan het huidige EC Seniors.
+      const displayedResult = eurotourResult || currentResult;
       const historical = state.tournaments.flatMap((event, eventIndex) =>
         (Array.isArray(event.matches) ? event.matches : []).filter(m => m.result === "win" || m.result === "loss")
           .map((match, matchIndex) => ({ match, event, eventIndex, matchIndex })));
@@ -2692,14 +2737,14 @@ function isChampionshipOverview(event) {
       const currentPlayerCacheEntry = currentPlayerMatchCache.get(Number(playerId));
       const currentPlayerCheckPending = !currentPlayerCacheEntry ||
         !currentPlayerCacheEntry.data?.success;
-      const recentHtml = currentPlayerCheckPending && !currentResult
+      const recentHtml = currentPlayerCheckPending && !displayedResult
         ? `<div class="epbf-dashboard-empty" role="status" aria-live="polite">${safe(currentPlayerCacheEntry?.error
           ? `${({nl:"Laatste uitslag tijdelijk niet bereikbaar",en:"Latest result temporarily unavailable",fr:"Dernier résultat temporairement indisponible",es:"Último resultado temporalmente no disponible",de:"Letztes Ergebnis vorübergehend nicht verfügbar"}[currentLanguage] || "Latest result temporarily unavailable")} (${currentPlayerCacheEntry.error})`
           : ({nl:"Recentste wedstrijd ophalen…",en:"Loading latest match…",fr:"Chargement du dernier match…",es:"Cargando el último partido…",de:"Letztes Spiel wird geladen…"}[currentLanguage] || "Loading latest match…"))}</div>`
-        : currentResult ? `<div class="epbf-dashboard-match">
-        <small>${safe(l.currentTournament)} · ${safe(currentResult.match.round || "")}${currentResult.match.table ? ` · ${safe(currentResult.match.table)}` : ""}</small>
-        <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(currentResult.opponent.name || "–")}</strong>
-          <b class="${currentResult.result === "win" ? "epbf-result-win" : "epbf-result-loss"}">${safe(epbfScore(currentResult.score))} – ${safe(epbfScore(currentResult.opponentScore))}</b></div>
+        : displayedResult ? `<div class="epbf-dashboard-match">
+        <small>${safe(eurotourResult ? eurotourResult.event.name : l.currentTournament)} · ${safe(displayedResult.match.round || "")}${displayedResult.match.table ? ` · ${safe(displayedResult.match.table)}` : ""}</small>
+        <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(epbfPlayerName(displayedResult.opponent))}</strong>
+          <b class="${displayedResult.result === "win" ? "epbf-result-win" : "epbf-result-loss"}">${safe(epbfScore(displayedResult.score))} – ${safe(epbfScore(displayedResult.opponentScore))}</b></div>
       </div>` : currentPlayerCacheEntry?.data?.success && recent ? `<div class="epbf-dashboard-match">
         <small>${safe(l.provisional)} · ${safe(recent.event.disciplineName || recent.event.name || "EPBF")}</small>
         <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(recent.match.opponent?.name || "–")}</strong>
