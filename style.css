@@ -1665,3 +1665,105 @@ body { min-height: 100%; min-height: 100dvh; }
   }
   .content { padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* EPBF 2026 – nieuwe dashboardvormgeving, zonder wijzigingen aan datafeeds */
+.epbf-new-home { padding-bottom: 16px; }
+.epbf-viewer-hero { min-height: 205px; margin: 0 -13px 12px; padding: 25px 20px 20px; display:flex; flex-direction:column; justify-content:flex-end; align-items:flex-start; gap:11px; background:linear-gradient(180deg,rgba(4,18,34,.08),rgba(4,18,34,.94)),url("assets/dashboard.jpg.png") center/cover; }
+.epbf-hero-eyebrow { font-size:11px; font-weight:700; letter-spacing:.08em; color:#d5e7fb; }
+.epbf-viewer-hero h1 { margin:0; font-size:clamp(22px,6vw,30px); line-height:1.15; max-width:95%; text-shadow:0 2px 12px #000; }
+.epbf-hero-live { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:8px; background:#df283d; color:white; font-size:12px; font-weight:800; }
+.epbf-live-pulse { width:7px; height:7px; border-radius:50%; background:#fff; }
+.epbf-home-shortcuts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; margin:12px 0 18px; }
+.epbf-home-shortcut { min-width:0; min-height:108px; border:1px solid #1a3756; border-radius:13px; background:linear-gradient(155deg,#112b49,#091b30); color:#f7faff; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; padding:10px 4px; }
+.epbf-home-shortcut svg { width:25px; height:25px; stroke:#43a3ff; }
+.epbf-home-shortcut.purple svg { stroke:#b76aff; }
+.epbf-home-shortcut.gold svg { stroke:#ffb938; }
+.epbf-home-shortcut strong { font-size:clamp(9px,2.7vw,12px); line-height:1.2; overflow-wrap:anywhere; }
+.epbf-home-shortcut small { font-size:clamp(8px,2.1vw,10px); line-height:1.25; color:#b8c9dc; overflow-wrap:anywhere; }
+.epbf-shortcut-preview { opacity:.72; }
+.epbf-new-heading { margin-top:20px; }
+.epbf-new-heading strong { font-size:16px; }
+.epbf-home-future { font-size:10px; color:#829ab3; text-align:center; margin:22px 0 5px; }
+.epbf-player-shortcuts { margin:14px 0 20px; }
+.epbf-personal-dashboard .epbf-personal-header { border-radius:14px; }
+@media(max-width:355px) { .epbf-home-shortcuts {gap:5px;} .epbf-home-shortcut {padding:8px 2px; min-height:100px;} }
+
+/* Stap 2: gedeelde favorieten voor Kijker en Speler */
+.epbf-favorite-list { margin: 14px 0 20px; }
+.epbf-favorite-row { display:flex; align-items:center; gap:8px; border-bottom:1px solid #1b4059; background:#0b2338; border-radius:10px; margin-bottom:7px; padding:3px 7px 3px 0; }
+.epbf-favorite-player { display:flex; align-items:center; flex:1; gap:11px; min-width:0; text-align:left; padding:13px 10px; color:#f4f8ff; border:0; background:none; }
+.epbf-favorite-player strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+.epbf-favorite-star { display:grid; place-items:center; flex:none; width:40px; height:40px; border-radius:10px; border:1px solid #526079; color:#a6bbce; background:#132e46; }
+.epbf-favorite-star svg { width:21px; height:21px; }
+.epbf-favorite-star.active { color:#ffd34d; border-color:#ad872d; background:#40351d; }
+.epbf-favorite-star.active svg { fill:#ffd34d; }
+.epbf-favorite-profile-action { display:flex; justify-content:flex-end; padding-top:8px; }
+
+/* Favorieten: wedstrijden en spelers beheren */
+.epbf-favorite-tabs { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:5px; margin:15px 0 18px; background:#0b243a; border:1px solid #244761; border-radius:12px; }
+.epbf-favorite-tabs button { min-height:42px; border:0; border-radius:9px; color:#bfd0df; background:transparent; font-size:12px; font-weight:700; }
+.epbf-favorite-tabs button.active { background:#087b55; color:#fff; }
+.epbf-fav-match { position:relative; margin-bottom:9px; padding:13px; background:linear-gradient(120deg,#0e2b44,#091e33); border:1px solid #244761; border-radius:12px; }
+.epbf-fav-match > small { display:block; color:#b2c7d9; font-size:10px; margin-bottom:9px; }
+.epbf-fav-match-names { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:7px 12px; }
+.epbf-fav-match-names strong { font-size:12px; overflow-wrap:anywhere; }
+.epbf-fav-match-names strong:first-child { grid-column:1; grid-row:1; }
+.epbf-fav-match-names strong:last-child { grid-column:1; grid-row:2; }
+.epbf-fav-match-names span { grid-column:2; grid-row:1/3; font-weight:800; color:#fff; font-size:15px; }
+.epbf-fav-live { display:inline-block; margin-top:8px; color:#23ec8c; font-size:10px; font-weight:800; }
+.epbf-fav-loading { color:#b5d1e3; font-size:12px; }
+
+
+/* EPBF meldingsinstellingen - visueel consistent met de app */
+.epbf-notify-intro { display:flex; align-items:center; gap:13px; margin:14px 0 23px; padding:15px; background:linear-gradient(120deg,#10334b,#09243b); border:1px solid #23506b; border-radius:14px; }
+.epbf-notify-intro-icon { flex:0 0 44px; height:44px; display:grid; place-items:center; color:#19e78b; background:#103e43; border-radius:12px; }
+.epbf-notify-intro-icon svg { width:23px; height:23px; }
+.epbf-notify-intro p { margin:0; color:#d3e6f2; font-size:12px; line-height:1.6; }
+.epbf-notify-section { margin:0 0 20px; }
+.epbf-notify-heading { display:flex; align-items:center; gap:9px; margin:0 0 10px 3px; color:#eaf6ff; font-size:14px; }
+.epbf-notify-heading svg { width:17px; height:17px; color:#1fe58c; }
+.epbf-notify-options { overflow:hidden; background:#0d2b43; border:1px solid #21516a; border-radius:13px; }
+.epbf-notify-option { position:relative; display:flex; align-items:center; gap:11px; min-height:62px; padding:12px 13px; cursor:pointer; }
+.epbf-notify-option + .epbf-notify-option { border-top:1px solid #204158; }
+.epbf-notify-option-icon { flex:0 0 32px; width:32px; height:32px; display:grid; place-items:center; color:#18e58a; background:#0b3b44; border-radius:9px; }
+.epbf-notify-option-icon svg { width:17px; height:17px; }
+.epbf-notify-option-label { flex:1; min-width:0; color:#f1f7ff; font-size:12px; font-weight:650; line-height:1.4; }
+.epbf-notify-input { position:absolute; width:1px; height:1px; opacity:0; }
+.epbf-notify-switch { position:relative; flex:0 0 42px; width:42px; height:24px; background:#405a70; border:1px solid #587084; border-radius:99px; transition:background .2s; }
+.epbf-notify-switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; background:#fff; border-radius:50%; box-shadow:0 1px 3px #0005; transition:transform .2s; }
+.epbf-notify-input:checked + .epbf-notify-switch { background:#05c96b; border-color:#15df82; }
+.epbf-notify-input:checked + .epbf-notify-switch::after { transform:translateX(18px); }
+.epbf-notify-input:focus-visible + .epbf-notify-switch { outline:2px solid #fff; outline-offset:3px; }
+.epbf-notify-permission { width:100%; display:flex; align-items:center; gap:11px; min-height:60px; padding:12px 14px; background:#0e3048; border:1px solid #286080; border-radius:12px; color:#f2faff; font-size:12px; font-weight:700; text-align:left; }
+.epbf-notify-permission.is-granted { border-color:#147b61; background:#0c343b; }
+.epbf-notify-permission.is-denied { border-color:#8a5252; }
+.epbf-notify-permission:disabled { cursor:default; opacity:1; }
+.epbf-notify-permission-icon { flex:0 0 30px; color:#16e78b; }
+.epbf-notify-permission-icon svg { width:22px; height:22px; }
+.epbf-notify-permission > span:nth-child(2) { flex:1; }
+.epbf-notify-permission > svg { width:16px; height:16px; }
+.epbf-notify-footnote { display:flex; align-items:flex-start; gap:8px; margin:13px 4px 22px; color:#8eafc3; font-size:11px; line-height:1.6; }
+.epbf-notify-footnote svg { flex:0 0 15px; width:15px; height:15px; margin-top:2px; }
+
+/* EPBF: uniforme spelersfiche, toernooimatches en favorieten */
+.epbf-dashboard-section { margin: 15px 0 18px; }
+.epbf-dashboard-section > .section-heading { margin: 14px 0 9px; }
+.epbf-dashboard-match { margin: 7px 0; border-radius: 13px; padding: 13px 14px; box-shadow: 0 2px 8px #0002; }
+.epbf-dashboard-match-button { display:block; width:100%; border:1px solid #2a607b; transition:border-color .15s, background .15s; }
+.epbf-dashboard-match-button:active { background:#123b52; }
+.epbf-event-open-label { margin-top:9px; color:#24e596 !important; font-weight:700; font-size:11px !important; }
+.epbf-event-match-row { border-left:3px solid #2a6882; margin-bottom:10px; }
+.epbf-event-match-row .epbf-dashboard-match-line { margin:6px 0; }
+.epbf-event-match-row .epbf-dashboard-match-line strong { font-size:13px; }
+.epbf-tournament-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:10px 0 17px; }
+.epbf-tournament-summary span { display:flex; flex-direction:column; gap:5px; align-items:center; padding:11px 5px; border:1px solid #24516a; border-radius:11px; background:#0d2c43; color:#afc8da; font-size:10px; }
+.epbf-tournament-summary b { color:#19e58c; font-size:18px; }
+.epbf-fav-match { padding:14px; border-radius:13px; margin-bottom:11px; }
+.epbf-fav-match-names button { color:#f4f8ff; background:none; border:0; padding:3px 0; font-weight:700; font-size:12px; text-align:left; cursor:pointer; }
+.epbf-fav-match-names button:focus-visible { outline:2px solid #20e68c; }
+
+
+/* Drie bredere tegels op het spelersdashboard */
+.epbf-player-shortcuts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
