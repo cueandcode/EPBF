@@ -2629,10 +2629,13 @@ function isChampionshipOverview(event) {
         ])].filter(Boolean).sort((a, b) => a.localeCompare(b, "nl"));
         const isFinishedMatch = match => {
           const status = String(match.status || "").trim().toUpperCase();
-          if (["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO"].includes(status)) return true;
+          if (["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO", "FF", "FORFEIT"].includes(status)) return true;
+          // EPBF geeft forfaits ook als scorewaarde (FF/WO) door, vaak zonder eindstatus.
+          // Een dergelijke uitslag is definitief en moet onder de afgewerkte wedstrijden vallen.
+          const a = match.scoreA, b = match.scoreB;
+          if ([a, b].some(value => /^(?:FF|WO|W\/O|FORFEIT|WALKOVER)$/i.test(String(value ?? "").trim()))) return true;
           if (["RUNNING", "TIMEOUT", "READY", "SCHEDULED", "PENDING", "WAITING", "NOT_STARTED"].includes(status)) return false;
           const target = Number(match.cells?.[3] ?? match.raceTo ?? match.race);
-          const a = match.scoreA, b = match.scoreB;
           return a != null && a !== "" && b != null && b !== "" &&
             Number.isFinite(target) && target > 0 &&
             Number.isFinite(Number(a)) && Number.isFinite(Number(b)) &&
@@ -3136,11 +3139,12 @@ function isChampionshipOverview(event) {
       }
     }
     function personalEurotourUpcoming(playerId) {
-      const selectedName = String(personalProfile?.name || "").trim().toLowerCase();
+      const selectedName = String(personalProfile?.playerId === Number(playerId) ? personalProfile.name : epbfProfileState(Number(playerId)).playerName || "");
       const normalizeName = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
       const nameParts = normalizeName(selectedName).split(" ").filter(Boolean);
       const matchesPlayer = player => Number(player?.playerId) === Number(playerId) ||
         (nameParts.length >= 2 && nameParts.every(part => normalizeName(epbfPlayerName(player)).split(" ").includes(part)));
+      const finished = new Set(["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO", "FF"]);
       const found = [];
       for (const event of officialTournaments) {
         if (!currentSpanishOpenCategory(event)) continue;
@@ -3148,12 +3152,22 @@ function isChampionshipOverview(event) {
         for (const match of Array.isArray(data?.matches) ? data.matches : []) {
           const players = Array.isArray(match.players) ? match.players : [];
           if (players.length < 2 || !players.some(matchesPlayer)) continue;
-          const status = String(match.status || "").toUpperCase();
-          if (["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO"].includes(status)) continue;
+          const status = String(match.status || "").trim().toUpperCase();
+          if (finished.has(status)) continue;
           const a = Number(match.scoreA), b = Number(match.scoreB);
-          if (Number.isFinite(a) && Number.isFinite(b) && (a !== 0 || b !== 0) && !["RUNNING", "SCHEDULED"].includes(status)) continue;
+          const validScores = match.scoreA != null && match.scoreB != null && Number.isFinite(a) && Number.isFinite(b);
+          const target = Number(match.cells?.[3]);
+          // Een score die de race-to bereikt is al afgelopen, ook als de draw
+          // nog geen expliciete FINISHED-status doorgeeft.
+          if (validScores && target > 0 && (a >= target || b >= target)) continue;
+          // De draw kan bij een lopende wedstrijd UNKNOWN of een lege status geven.
+          // Een positieve tussenscore onder de race-to is dan een betrouwbare aanwijzing.
+          const inProgress = status === "RUNNING" || status === "TIMEOUT" ||
+            (validScores && (a > 0 || b > 0) && !finished.has(status));
           const playerIndex = players.findIndex(matchesPlayer);
-          found.push({ match: { ...match, playerA: players[0], playerB: players[1], status: status === "RUNNING" ? "RUNNING" : "SCHEDULED", discipline: event.name, __personalOpponent: players[1 - playerIndex] }, source: "eurotour", event });
+          found.push({ match: { ...match, playerA: players[0], playerB: players[1],
+            status: inProgress ? "RUNNING" : (status === "READY" ? "READY" : "SCHEDULED"),
+            discipline: event.name, __personalOpponent: players[1 - playerIndex] }, source: "eurotour", event });
         }
       }
       return found.sort((a,b) => {
@@ -3324,8 +3338,16 @@ function isChampionshipOverview(event) {
       // Zoek de volgende wedstrijd eerst in de dynamisch ontdekte disciplines
       // van het actuele European Championship. De aparte livefeed blijft fallback.
       // De huidige toernooipagina kan wedstrijden bevatten die nog niet in officialMatches staan.
-      const playerIsInMatch = m =>
-        Number(m.playerA?.playerId) === playerId || Number(m.playerB?.playerId) === playerId;
+      const normalizedPersonalName = value => String(value || "").normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const profileWords = normalizedPersonalName(personalProfile?.playerId === Number(playerId)
+        ? personalProfile.name : state.playerName).split(" ").filter(Boolean);
+      const playerIsInMatch = m => [m.playerA, m.playerB, ...(Array.isArray(m.players) ? m.players : [])].some(p => {
+        if (Number(p?.playerId) === Number(playerId)) return true;
+        const words = normalizedPersonalName(epbfPlayerName(p)).split(" ").filter(Boolean);
+        return profileWords.length >= 2 && words.length === profileWords.length &&
+          profileWords.every(word => words.includes(word));
+      });
       const normalizedMatchStatus = m => String(m.status || "").trim().toUpperCase();
       const hasValidScore = m => m.scoreA != null && m.scoreB != null &&
         String(m.scoreA).trim() !== "" && String(m.scoreB).trim() !== "" &&
@@ -3336,7 +3358,7 @@ function isChampionshipOverview(event) {
       // gepland wanneer de bron de match expliciet als afgewerkt markeert.
       const isUpcomingStatus = m => {
         const status = normalizedMatchStatus(m);
-        if (["RUNNING", "SCHEDULED", "NOT_STARTED", "PENDING", "WAITING", "UNKNOWN", ""].includes(status)) return true;
+        if (["RUNNING", "TIMEOUT", "READY", "SCHEDULED", "NOT_STARTED", "PENDING", "WAITING", "UNKNOWN", ""].includes(status)) return true;
         return !isFinishedStatus(m) && hasValidScore(m) && Number(m.scoreA) === 0 && Number(m.scoreB) === 0;
       };
       const currentTournamentUpcoming = (hasCurrentEurotour ? [] : currentChampionshipMatches)
@@ -3370,7 +3392,7 @@ function isChampionshipOverview(event) {
             discipline: "EPBF"
           }, source: "player-draw" })) : [];
       const eurotourUpcoming = personalEurotourUpcoming(playerId);
-      const upcomingCandidates = [...eurotourUpcoming, ...currentTournamentUpcoming, ...liveFeedUpcoming, ...playerDrawUpcoming];
+      const upcomingCandidates = [...liveFeedUpcoming, ...eurotourUpcoming, ...currentTournamentUpcoming, ...playerDrawUpcoming];
       // Een wedstrijd die al bezig is heeft voorrang; daarna gebruik de eerstvolgende
       // beschikbare wedstrijd-ID binnen de officiële draw. Dedupliceer dezelfde match.
       const seenUpcoming = new Set();
@@ -3381,7 +3403,7 @@ function isChampionshipOverview(event) {
         return true;
       });
       uniqueUpcoming.sort((a, b) => {
-        const statusDiff = Number(String(b.match.status).toUpperCase() === "RUNNING") - Number(String(a.match.status).toUpperCase() === "RUNNING");
+        const statusDiff = Number(["RUNNING", "TIMEOUT"].includes(String(b.match.status).toUpperCase())) - Number(["RUNNING", "TIMEOUT"].includes(String(a.match.status).toUpperCase()));
         if (statusDiff) return statusDiff;
         if (a.source === "championship" && b.source === "championship") {
           const disciplineDiff = Number(a.match.__disciplineId || 0) - Number(b.match.__disciplineId || 0);
@@ -3399,6 +3421,8 @@ function isChampionshipOverview(event) {
         hasValidScore(current) && Number(current.scoreA) === 0 && Number(current.scoreB) === 0
         ? ({nl:"GEPLAND", en:"SCHEDULED", fr:"PROGRAMMÉ", es:"PROGRAMADO", de:"GEPLANT"}[currentLanguage] || "SCHEDULED")
         : current ? officialStatus(rawCurrentStatus) : "";
+      const currentSectionTitle = current && ["RUNNING", "TIMEOUT"].includes(rawCurrentStatus)
+        ? ({nl:"Huidige wedstrijd",en:"Current match",fr:"Match en cours",es:"Partido actual",de:"Aktuelles Spiel"}[currentLanguage] || "Current match") : l.next;
       const upcomingHtml = current ? `${currentSource === "live" ? `<button class="epbf-dashboard-match epbf-dashboard-match-button" data-official-match="${Number(current.id)}">` : `<div class="epbf-dashboard-match">`}
         <small>${safe(l.scheduled)} · ${safe(current.discipline || "EPBF")} · ${safe(current.scheduled || "")}${current.matchNumber ? ` · ${safe(current.matchNumber)}` : ""}${current.table ? ` · ${safe(current.table)}` : ""}</small>
         <div class="epbf-dashboard-match-line"><strong>${safe(l.opponent)} ${safe(other?.name || "–")}</strong><span class="badge ${rawCurrentStatus === "RUNNING" ? "green" : ""}">${safe(currentStatusLabel)}</span></div>
@@ -3409,7 +3433,7 @@ function isChampionshipOverview(event) {
       const statsLabel = compactPlayerLabels[currentLanguage] || compactPlayerLabels.en;
       return `<div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.last)}</strong></div>${recentHtml}</div>
         ${currentTournamentStats.length ? `<div class="epbf-tournament-summary"><span>${safe(statsLabel.played)} <b>${currentTournamentStats.length}</b></span><span>${safe(statsLabel.won)} <b>${tournamentWins}</b></span><span>${safe(statsLabel.lost)} <b>${tournamentLosses}</b></span></div>` : ""}
-        <div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.next)}</strong></div>${upcomingHtml}</div>
+        <div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(currentSectionTitle)}</strong></div>${upcomingHtml}</div>
         <div class="epbf-dashboard-section"><div class="section-heading"><strong>${safe(l.live)}</strong><button data-page="live">${safe(l.all)} ›</button></div>${officialLiveContent()}</div>`;
     }
     const personalLoadingLabels = {
