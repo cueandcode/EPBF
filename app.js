@@ -3220,19 +3220,27 @@ function isChampionshipOverview(event) {
       const eurotourResult = personalEurotourLatestCompleted(playerId);
       // De actuele Spanish Open (29-10-2026) is recenter dan het huidige EC Seniors.
       const eurotourPlayed = completedEurotourMatches(playerId);
-      const displayedResult = eurotourResult || currentResult;
+      // Een lopende Euro Tour heeft voorrang op oudere EC-wedstrijden.
+      // Toon nooit tijdelijk een EC-resultaat terwijl de actuele Euro Tour-draw laadt.
+      const currentEurotourEvents = officialTournaments.filter(currentSpanishOpenCategory);
+      const hasCurrentEurotour = currentEurotourEvents.length > 0;
+      const eurotourDrawPending = hasCurrentEurotour && currentEurotourEvents.some(event => {
+        const key = `${event.id}:${epbfCategoryForEvent(event)}`;
+        return !officialEventDetails.has(key);
+      });
+      const displayedResult = hasCurrentEurotour ? eurotourResult : currentResult;
       const historical = state.tournaments.flatMap((event, eventIndex) =>
         (Array.isArray(event.matches) ? event.matches : []).filter(m => m.result === "win" || m.result === "loss")
           .map((match, matchIndex) => ({ match, event, eventIndex, matchIndex })));
       // Prioriteit aan een afgewerkte match in het lopende tornooi; gebruik
       // de spelershistoriek alleen als terugvaloptie.
-      const recent = historical[0];
+      const recent = hasCurrentEurotour ? null : historical[0];
       // Toon geen oude historische uitslag zolang de actuele Worker-route nog
       // niet heeft geantwoord. Zo flitst een wedstrijd uit 2024 niet eerst in beeld.
       const currentPlayerCacheEntry = currentPlayerMatchCache.get(Number(playerId));
       const currentPlayerCheckPending = !currentPlayerCacheEntry ||
         !currentPlayerCacheEntry.data?.success;
-      const recentHtml = currentPlayerCheckPending && !displayedResult
+      const recentHtml = (hasCurrentEurotour ? eurotourDrawPending : currentPlayerCheckPending) && !displayedResult
         ? `<div class="epbf-dashboard-empty" role="status" aria-live="polite">${safe(currentPlayerCacheEntry?.error
           ? `${({nl:"Laatste uitslag tijdelijk niet bereikbaar",en:"Latest result temporarily unavailable",fr:"Dernier résultat temporairement indisponible",es:"Último resultado temporalmente no disponible",de:"Letztes Ergebnis vorübergehend nicht verfügbar"}[currentLanguage] || "Latest result temporarily unavailable")} (${currentPlayerCacheEntry.error})`
           : ({nl:"Recentste wedstrijd ophalen…",en:"Loading latest match…",fr:"Chargement du dernier match…",es:"Cargando el último partido…",de:"Letztes Spiel wird geladen…"}[currentLanguage] || "Loading latest match…"))}</div>`
@@ -3265,11 +3273,11 @@ function isChampionshipOverview(event) {
         if (["RUNNING", "SCHEDULED", "NOT_STARTED", "PENDING", "WAITING", "UNKNOWN", ""].includes(status)) return true;
         return !isFinishedStatus(m) && hasValidScore(m) && Number(m.scoreA) === 0 && Number(m.scoreB) === 0;
       };
-      const currentTournamentUpcoming = currentChampionshipMatches
+      const currentTournamentUpcoming = (hasCurrentEurotour ? [] : currentChampionshipMatches)
         .filter(m => playerIsInMatch(m) && isUpcomingStatus(m))
         .map(m => ({ match: m, source: "championship" }));
       const liveFeedUpcoming = officialMatches
-        .filter(m => playerIsInMatch(m) && isUpcomingStatus(m))
+        .filter(m => (!hasCurrentEurotour || /euro.?tour|spanish open/i.test(String(m.discipline || "") + " " + String(m.category || ""))) && playerIsInMatch(m) && isUpcomingStatus(m))
         .map(m => ({ match: m, source: "live" }));
       // Extra terugvaloptie: de spelersgerichte Worker-route bevat ook de
       // lopende draw-wedstrijd, zelfs wanneer de algemene livefeed achterloopt.
@@ -3277,7 +3285,7 @@ function isChampionshipOverview(event) {
       // aanmerking, zodat oudere disciplines niet als 'volgende' verschijnen.
       const playerCurrentData = currentPlayerMatchCache.get(Number(playerId))?.data;
       const latestEventId = Number(playerCurrentData?.latestCompleted?.eventId || 0);
-      const playerDrawUpcoming = latestEventId && Array.isArray(playerCurrentData?.matches)
+      const playerDrawUpcoming = !hasCurrentEurotour && latestEventId && Array.isArray(playerCurrentData?.matches)
         ? playerCurrentData.matches.filter(m => {
             if (Number(m.eventId) !== latestEventId || !Array.isArray(m.players)) return false;
             if (!m.players.some(p => Number(p.playerId) === playerId)) return false;
