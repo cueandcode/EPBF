@@ -412,6 +412,7 @@
     let officialEventError = "";
     let officialMatchPlayerFilter = "";
     let officialMatchCountryFilter = "";
+    let officialHideFinishedMatches = false;
     let officialParticipantCountryFilter = "";
 
     const EPBF_ARCHIVE_CATEGORIES = [
@@ -2626,7 +2627,19 @@ function isChampionshipOverview(event) {
           ...allMatches.flatMap(match =>
             (Array.isArray(match.players) ? match.players : []).map(matchPlayerCountry))
         ])].filter(Boolean).sort((a, b) => a.localeCompare(b, "nl"));
+        const isFinishedMatch = match => {
+          const status = String(match.status || "").trim().toUpperCase();
+          if (["FINISHED", "COMPLETED", "COMPLETE", "DONE", "CLOSED", "WALKOVER", "WO"].includes(status)) return true;
+          if (["RUNNING", "TIMEOUT", "READY", "SCHEDULED", "PENDING", "WAITING", "NOT_STARTED"].includes(status)) return false;
+          const target = Number(match.cells?.[3] ?? match.raceTo ?? match.race);
+          const a = match.scoreA, b = match.scoreB;
+          return a != null && a !== "" && b != null && b !== "" &&
+            Number.isFinite(target) && target > 0 &&
+            Number.isFinite(Number(a)) && Number.isFinite(Number(b)) &&
+            (Number(a) >= target || Number(b) >= target);
+        };
         const list = allMatches.filter(match => {
+          if (officialHideFinishedMatches && isFinishedMatch(match)) return false;
           const players = Array.isArray(match.players) ? match.players : [];
           const matchesPlayer = !officialMatchPlayerFilter ||
             players.some(player => epbfPlayerName(player) === officialMatchPlayerFilter);
@@ -2652,6 +2665,10 @@ function isChampionshipOverview(event) {
               </select>
             </div>
           </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;">
+            <input type="checkbox" id="epbf-hide-finished-matches" ${officialHideFinishedMatches ? "checked" : ""}>
+            ${safe(({nl:"Afgewerkte wedstrijden verbergen",en:"Hide completed matches",fr:"Masquer les matchs terminés",es:"Ocultar partidos finalizados",de:"Beendete Spiele ausblenden"})[currentLanguage] || "Hide completed matches")}
+          </label>
           <small>${list.length} van ${allMatches.length} wedstrijden</small>
         </div>` + (list.length
           ? roundNames.map(round => {
@@ -3737,6 +3754,13 @@ function isChampionshipOverview(event) {
       }
       if (e.target.id === "epbf-participant-country-filter") {
         officialParticipantCountryFilter = e.target.value;
+        const scrollTop = $("#content").scrollTop;
+        render();
+        $("#content").scrollTop = scrollTop;
+        return;
+      }
+      if (e.target.id === "epbf-hide-finished-matches") {
+        officialHideFinishedMatches = e.target.checked;
         const scrollTop = $("#content").scrollTop;
         render();
         $("#content").scrollTop = scrollTop;
