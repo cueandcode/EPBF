@@ -1238,7 +1238,7 @@ function officialFlag(country) {
       const featured = officialMatches.filter(m => String(m.status).toUpperCase() === "RUNNING").slice(0, 3);
       return `<div class="epbf-new-home">
         <div class="epbf-viewer-hero"><span class="epbf-hero-eyebrow">EPBF · ${safe(t("spectator"))}</span>
-          <h1>${safe(current[0]?.name || "European Pocket Billiard Federation")}</h1>
+          <h1>${safe(String(current[0]?.name || "European Pocket Billiard Federation").replace(/^Euro\s*Tour\s*Men\b/i, "Euro Tour"))}</h1>
           <span class="epbf-hero-live"><span class="epbf-live-pulse"></span>${safe(l.live)}</span>
         </div>
         <div class="epbf-home-shortcuts">
