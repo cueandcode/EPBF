@@ -40,6 +40,10 @@
         epbfFavorites.push({ playerId:id, name:String(p?.name || profile.playerName || (personalProfile?.playerId === id ? personalProfile.name : "") || `EPBF #${id}`), country:String(p?.country || (personalProfile?.playerId === id ? personalProfile.country : "") || "") });
       }
       try { localStorage.setItem(EPBF_FAVORITES_KEY, JSON.stringify(epbfFavorites)); } catch(e) { console.error("Saving EPBF favorites", e); }
+      // Synchroniseer de gewijzigde favorieten ook met het pushabonnement van dit toestel.
+      if (epbfPushEnabled() && "Notification" in window && Notification.permission === "granted") {
+        void epbfRegisterPush();
+      }
     }
     function favoriteStar(id) {
       const active = isEPBFFavorite(id), l = favoriteText();
