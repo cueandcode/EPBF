@@ -3721,6 +3721,15 @@ function isChampionshipOverview(event) {
     });
     setAppLanguage(currentLanguage);
     if (personalProfile) showMode("player");
+    // Laad actuele wedstrijden voor het eigen profiel en alle favorieten meteen
+    // bij het opstarten, zonder dat de gebruiker eerst een toernooi moet openen.
+    // De kalenderlaadfunctie haalt vervolgens de actuele Euro Tour-draws op.
+    if (personalProfile?.playerId) {
+      Promise.resolve().then(() => ensureCurrentPlayerMatches(personalProfile.playerId));
+    }
+    if (epbfFavorites.length) {
+      Promise.resolve().then(() => ensureFavoriteMatchData());
+    }
     refreshOfficialCalendar();
     refreshOfficialTournaments();
 
