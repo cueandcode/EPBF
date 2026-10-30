@@ -67,11 +67,28 @@
       const upcoming = [], played = [], seen = new Set();
       const finished = new Set(["FINISHED","COMPLETED","COMPLETE","DONE","CLOSED","WALKOVER","WO"]);
       const favoriteIds = new Set(epbfFavorites.map(p => Number(p.playerId)));
+      // De Euro Tour-draw bevat niet bij elke speler een EPBF Player ID.
+      // Vergelijk in dat geval ook de volledige spelersnaam (niet alleen een achternaam).
+      const normalizeFavoriteName = value => String(value || "").normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const favoriteNames = new Set(epbfFavorites.map(p => normalizeFavoriteName(p.name)).filter(Boolean));
+      const isFavoriteMatchPlayer = p => {
+        const id = Number(p?.playerId);
+        if (Number.isSafeInteger(id) && id > 0) return favoriteIds.has(id);
+        const name = normalizeFavoriteName(epbfPlayerName(p));
+        if (!name) return false;
+        const parts = name.split(" ").filter(Boolean);
+        return favoriteNames.has(name) || (parts.length >= 2 && epbfFavorites.some(f => {
+          const favoriteParts = normalizeFavoriteName(f.name).split(" ").filter(Boolean);
+          return favoriteParts.length >= 2 && favoriteParts.length === parts.length &&
+            favoriteParts.every(part => parts.includes(part));
+        }));
+      };
       function add(match, eventLabel, eventKey, isCurrentTournament = false) {
         const players = Array.isArray(match.players) ? match.players : [match.playerA,match.playerB].filter(Boolean);
         if (!players.length) return;
         const ids = players.map(p => Number(p?.playerId));
-        if (!ids.some(id => favoriteIds.has(id))) return;
+        if (!players.some(isFavoriteMatchPlayer)) return;
         const a = match.scoreA, b = match.scoreB;
         const status = String(match.status || "").toUpperCase();
         const target = Number(match.cells?.[3]);
@@ -105,20 +122,54 @@
           add(m, m.eventName || "European Championships", `draw-${m.eventId || ''}`);
         }
       }
+      // Dezelfde ontmoeting kan tegelijk in de livefeed en in de toernooidraw staan.
+      // Verberg uitsluitend de geplande kopie wanneer de livefeed die ontmoeting toont.
+      const livePairs = new Set(upcoming.filter(e => e.active).map(e =>
+        e.players.map(p => normalizeFavoriteName(epbfPlayerName(p))).sort().join("|")));
+      const uniqueUpcoming = upcoming.filter(e => e.active || !livePairs.has(
+        e.players.map(p => normalizeFavoriteName(epbfPlayerName(p))).sort().join("|")));
+      upcoming.length = 0;
+      upcoming.push(...uniqueUpcoming);
       upcoming.sort((a,b) => Number(b.active) - Number(a.active));
       played.reverse();
       return { upcoming, played };
     }
+    // Nationaliteit aanvullen uit de officiële inschrijvingslijsten, zonder
+    // de wedstrijdgegevens of de herkenning van favorieten te veranderen.
+    function favoriteMatchCountry(player) {
+      const direct = epbfPlayerCountry(player);
+      if (direct) return direct;
+      const id = Number(player?.playerId);
+      const normalize = value => String(value || "").normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+      const name = normalize(epbfPlayerName(player));
+      for (const participants of currentEurotourRegistrations.values()) {
+        if (!Array.isArray(participants)) continue;
+        const found = participants.find(p => {
+          const candidateId = Number(p?.playerId);
+          return (Number.isSafeInteger(id) && id > 0 && candidateId === id) ||
+            (name && normalize(epbfPlayerName(p)) === name);
+        });
+        const country = found && epbfPlayerCountry(found);
+        if (country) return country;
+      }
+      return "";
+    }
+
     function favoriteMatchRow(entry) {
       const l = favoriteTabsLabels[currentLanguage] || favoriteTabsLabels.en;
       const m = entry.match;
       const names = entry.players.map(p => {
         const id = Number(p?.playerId);
-        const label = `${officialFlag(p.country)} ${safe(epbfPlayerName(p) || l.unknown)}`;
+        const label = `${officialFlag(favoriteMatchCountry(p))} ${safe(epbfPlayerName(p) || l.unknown)}`;
         return Number.isSafeInteger(id) && id > 0 ? `<button type="button" class="epbf-fav-player-link" data-epbf-player="${id}">${label}</button>` : label;
       });
       while (names.length < 2) names.push(safe(l.unknown));
-      const score = entry.done && m.scoreA != null && m.scoreB != null ? `${safe(m.scoreA)} – ${safe(m.scoreB)}` : (entry.active ? "LIVE" : "");
+      const hasScore = m.scoreA != null && m.scoreB != null &&
+        String(m.scoreA).trim() !== "" && String(m.scoreB).trim() !== "" &&
+        Number.isFinite(Number(m.scoreA)) && Number.isFinite(Number(m.scoreB));
+      const score = (entry.done || entry.active) && hasScore
+        ? `${safe(m.scoreA)} – ${safe(m.scoreB)}` : (entry.active ? "LIVE" : "");
       return `<div class="epbf-fav-match"><small>${safe(entry.eventLabel)}</small><div class="epbf-fav-match-names"><strong>${names[0]}</strong><span>${score || "vs"}</span><strong>${names[1]}</strong></div>${m.scheduled ? `<small>${safe(m.scheduled)}</small>` : ""}${entry.active ? `<span class="epbf-fav-live">LIVE</span>` : ""}</div>`;
     }
     function renderFavoriteMatches() {
@@ -143,6 +194,9 @@
         });
       }
       ensurePersonalEurotourDraws();
+      for (const event of officialTournaments) {
+        if (currentSpanishOpenCategory(event)) ensureCurrentEurotourRegistrations(event);
+      }
     }
     function renderFavorites() {
       const l = favoriteText(), tabs = favoriteTabsLabels[currentLanguage] || favoriteTabsLabels.en;
@@ -320,6 +374,11 @@
           const scrollPosition = content?.scrollTop || 0;
           render();
           if (content) content.scrollTop = scrollPosition;
+        }
+        // De favorietenpagina toont dezelfde aangevulde nationaliteiten als de toernooidraw.
+        if (page === "favorites" && favoriteTab === "matches" && !detail) {
+          const container = $("#favorite-match-results");
+          if (container) container.innerHTML = renderFavoriteMatches();
         }
       });
       currentEurotourRegistrationsRequests.set(category, request);
@@ -644,6 +703,11 @@ function officialFlag(country) {
         officialLiveState = "ready";
         officialLiveError = "";
         officialLiveUpdatedAt = data.updatedAt || null;
+        // Werk de actuele scores op de favorietenpagina mee bij.
+        if (page === "favorites" && favoriteTab === "matches" && !detail) {
+          const container = $("#favorite-match-results");
+          if (container) container.innerHTML = renderFavoriteMatches();
+        }
       } catch (error) {
         officialLiveError = String(error);
         // Laat eerder ontvangen scores staan als een latere verversing faalt.
@@ -853,15 +917,21 @@ function officialFlag(country) {
         // Zodra de kalender beschikbaar is, laad de lopende Euro Tour-draw
         // automatisch voor het spelersdashboard. De gebruiker hoeft het
         // toernooi niet eerst handmatig te openen of te vernieuwen.
-        if (mode === "player" && personalProfile && !personalChoosing) {
+        if ((mode === "player" && personalProfile && !personalChoosing) ||
+            (page === "favorites" && favoriteTab === "matches" && !detail)) {
           ensurePersonalEurotourDraws();
+          if (page === "favorites" && favoriteTab === "matches") {
+            for (const event of officialTournaments) {
+              if (currentSpanishOpenCategory(event)) ensureCurrentEurotourRegistrations(event);
+            }
+          }
         }
       } catch (error) {
         console.error("EPBF Calendar API:", error);
         if (!officialTournaments.length) officialCalendarState = "error";
       } finally {
         officialCalendarRequest = false;
-        if (mode && (page === "tournaments" || (page === "home" && !detail) || detail?.type === "tournament")) {
+        if (mode && (page === "tournaments" || (page === "home" && !detail) || (page === "favorites" && !detail) || detail?.type === "tournament")) {
           const content = $("#content");
           const scrollPosition = content.scrollTop;
           render();
@@ -2332,7 +2402,7 @@ function isChampionshipOverview(event) {
       return value === null || value === undefined || value === "" ? "–" : String(value);
     }
 
-    function epbfMatchRow(match, index) {
+    function epbfMatchRow(match, index, countryForPlayer = epbfPlayerCountry) {
       const players = Array.isArray(match.players) ? match.players : [];
       const playerA = players[0] || {};
       const playerB = players[1] || {};
@@ -2351,9 +2421,9 @@ function isChampionshipOverview(event) {
           <small>${safe(match.scheduled || "")}${match.table ? ` · ${t("table")} ${safe(match.table)}` : ""}</small>
         </div>
         <div class="epbf-match-players">
-          <span class="epbf-player-name ${aWon ? "epbf-winner" : ""}">${officialFlag(epbfPlayerCountry(playerA))} ${epbfPlayerLink(playerA)}</span>
+          <span class="epbf-player-name ${aWon ? "epbf-winner" : ""}">${officialFlag(countryForPlayer(playerA))} ${epbfPlayerLink(playerA)}</span>
           <strong class="epbf-match-score">${epbfScore(match.scoreA)} – ${epbfScore(match.scoreB)}</strong>
-          <span class="epbf-player-name epbf-player-b ${bWon ? "epbf-winner" : ""}">${officialFlag(epbfPlayerCountry(playerB))} ${epbfPlayerLink(playerB)}</span>
+          <span class="epbf-player-name epbf-player-b ${bWon ? "epbf-winner" : ""}">${officialFlag(countryForPlayer(playerB))} ${epbfPlayerLink(playerB)}</span>
         </div>
       </div>`;
     }
@@ -2507,14 +2577,29 @@ function isChampionshipOverview(event) {
           ...(Array.isArray(data.participants) ? data.participants.map(epbfPlayerName) : []),
           ...allMatches.flatMap(match => (Array.isArray(match.players) ? match.players : []).map(epbfPlayerName))
         ])].filter(name => name && name !== "–").sort((a, b) => a.localeCompare(b, "nl"));
-        const countryByPlayerId = new Map(
-          (Array.isArray(data.participants) ? data.participants : [])
-            .filter(player => player.playerId != null)
-            .map(player => [String(player.playerId), epbfPlayerCountry(player)])
-        );
+        // In de Euro Tour-draw ontbreken soms de landcodes. Koppel daarom
+        // de afzonderlijke inschrijvingslijst aan de wedstrijden op ID of naam.
+        const countryByPlayerId = new Map();
+        const countryByPlayerName = new Map();
+        const normalizeName = name => String(name || "").normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+        const knownPlayers = [
+          ...(Array.isArray(data.participants) ? data.participants : []),
+          ...(Array.isArray(registrationList) ? registrationList : []),
+          ...(Array.isArray(data.ranking) ? data.ranking : [])
+        ];
+        for (const player of knownPlayers) {
+          const country = epbfPlayerCountry(player);
+          if (!country) continue;
+          const id = Number(player?.playerId);
+          if (Number.isSafeInteger(id) && id > 0) countryByPlayerId.set(String(id), country);
+          const name = normalizeName(epbfPlayerName(player));
+          if (name) countryByPlayerName.set(name, country);
+        }
         const matchPlayerCountry = player =>
           epbfPlayerCountry(player) ||
-          countryByPlayerId.get(String(player?.playerId ?? "")) || "";
+          countryByPlayerId.get(String(player?.playerId ?? "")) ||
+          countryByPlayerName.get(normalizeName(epbfPlayerName(player))) || "";
         const countries = [...new Set([
           ...(Array.isArray(data.participants) ? data.participants : []).map(epbfPlayerCountry),
           ...allMatches.flatMap(match =>
@@ -2553,7 +2638,7 @@ function isChampionshipOverview(event) {
               return `<div class="epbf-round-heading">
                 <strong>${safe(round)}</strong>
                 <small>${roundMatches.length} ${roundMatches.length === 1 ? "wedstrijd" : "wedstrijden"}</small>
-              </div>${roundMatches.map((match, index) => epbfMatchRow(match, index)).join("")}`;
+              </div>${roundMatches.map((match, index) => epbfMatchRow(match, index, matchPlayerCountry)).join("")}`;
             }).join("")
           : `<div class="empty">${officialMatchPlayerFilter || officialMatchCountryFilter ? epbfUi("noFilteredMatches") : epbfUi("noEPBFMatches")}</div>`);
       } else if (tournamentTab === "ranking" || tournamentTab === "standings") {
