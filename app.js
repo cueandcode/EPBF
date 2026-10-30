@@ -141,18 +141,35 @@
       if (direct) return direct;
       const id = Number(player?.playerId);
       const normalize = value => String(value || "").normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ").trim();
       const name = normalize(epbfPlayerName(player));
+      const samePlayer = candidate => {
+        const candidateId = Number(candidate?.playerId);
+        if (Number.isSafeInteger(id) && id > 0 && candidateId === id) return true;
+        const candidateName = normalize(epbfPlayerName(candidate) || candidate?.name);
+        if (!name || !candidateName) return false;
+        if (name === candidateName) return true;
+        // De EPBF-draw kan VOORNAAM ACHTERNAAM gebruiken en de
+        // inschrijvingslijst ACHTERNAAM VOORNAAM. Vergelijk volledige woorden.
+        const words = name.split(" ").filter(Boolean);
+        const other = candidateName.split(" ").filter(Boolean);
+        return words.length >= 2 && words.length === other.length &&
+          words.every(word => other.includes(word));
+      };
+      // Eerst de actuele Euro Tour-inschrijvingslijsten raadplegen.
       for (const participants of currentEurotourRegistrations.values()) {
         if (!Array.isArray(participants)) continue;
-        const found = participants.find(p => {
-          const candidateId = Number(p?.playerId);
-          return (Number.isSafeInteger(id) && id > 0 && candidateId === id) ||
-            (name && normalize(epbfPlayerName(p)) === name);
-        });
+        const found = participants.find(samePlayer);
         const country = found && epbfPlayerCountry(found);
         if (country) return country;
       }
+      // Als de EPBF-draw geen land bevat, gebruik de reeds opgeslagen
+      // nationaliteit van de favoriete speler (geen verzonnen vlag).
+      const favorite = epbfFavorites.find(samePlayer);
+      if (favorite?.country) return favorite.country;
+      if (personalProfile && samePlayer(personalProfile) && personalProfile.country)
+        return personalProfile.country;
       return "";
     }
 
