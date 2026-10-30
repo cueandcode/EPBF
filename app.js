@@ -3078,19 +3078,40 @@ function isChampionshipOverview(event) {
     }
 
     // Gebruik de reeds werkende Euro Tour-draw ook voor de persoonlijke volgende wedstrijd.
+    // Een mislukte Euro Tour-aanvraag mag het dashboard niet permanent blokkeren.
+    // Maximaal drie automatische pogingen, met wachttijd tussen pogingen.
+    const personalEurotourRetryCounts = new Map();
+    const personalEurotourRetryTimers = new Map();
     function ensurePersonalEurotourDraws() {
       for (const event of officialTournaments) {
         if (!currentSpanishOpenCategory(event)) continue;
         const key = `${event.id}:${epbfCategoryForEvent(event)}`;
-        if (officialEventDetails.has(key) || officialEventRequests.has(key) || officialEventFailures.has(key)) continue;
+        if (officialEventDetails.has(key) || officialEventRequests.has(key) || personalEurotourRetryTimers.has(key)) continue;
+        const count = personalEurotourRetryCounts.get(key) || 0;
+        if (count >= 3) continue;
+        officialEventFailures.delete(key);
         Promise.resolve().then(() => loadOfficialEventDetail(event)).then(() => {
+          personalEurotourRetryCounts.delete(key);
           if ((mode === "player" && detail?.type === "personal") || (page === "favorites" && favoriteTab === "matches" && !detail)) {
             const content = $("#content");
             const pos = content?.scrollTop || 0;
             render();
             if (content) content.scrollTop = pos;
           }
-        }).catch(error => console.warn("EPBF personal Euro Tour draw:", error));
+        }).catch(error => {
+          console.warn("EPBF personal Euro Tour draw:", error);
+          const next = count + 1;
+          personalEurotourRetryCounts.set(key, next);
+          if (next < 3) {
+            const timer = setTimeout(() => {
+              personalEurotourRetryTimers.delete(key);
+              ensurePersonalEurotourDraws();
+            }, next * 2500);
+            personalEurotourRetryTimers.set(key, timer);
+          } else if (mode === "player" && detail?.type === "personal") {
+            render();
+          }
+        });
       }
     }
     function personalEurotourUpcoming(playerId) {
@@ -3245,20 +3266,27 @@ function isChampionshipOverview(event) {
         const key = `${event.id}:${epbfCategoryForEvent(event)}`;
         return !officialEventDetails.has(key);
       });
-      const displayedResult = hasCurrentEurotour ? eurotourResult : currentResult;
+      const displayedResult = hasCurrentEurotour ? eurotourResult :
+        (officialCalendarState === "ready" ? currentResult : null);
       const historical = state.tournaments.flatMap((event, eventIndex) =>
         (Array.isArray(event.matches) ? event.matches : []).filter(m => m.result === "win" || m.result === "loss")
           .map((match, matchIndex) => ({ match, event, eventIndex, matchIndex })));
       // Prioriteit aan een afgewerkte match in het lopende tornooi; gebruik
       // de spelershistoriek alleen als terugvaloptie.
-      const recent = hasCurrentEurotour ? null : historical[0];
+      const recent = hasCurrentEurotour || officialCalendarState !== "ready" ? null : historical[0];
       // Toon geen oude historische uitslag zolang de actuele Worker-route nog
       // niet heeft geantwoord. Zo flitst een wedstrijd uit 2024 niet eerst in beeld.
       const currentPlayerCacheEntry = currentPlayerMatchCache.get(Number(playerId));
       const currentPlayerCheckPending = !currentPlayerCacheEntry ||
         !currentPlayerCacheEntry.data?.success;
-      const recentHtml = (hasCurrentEurotour ? eurotourDrawPending : currentPlayerCheckPending) && !displayedResult
-        ? `<div class="epbf-dashboard-empty" role="status" aria-live="polite">${safe(currentPlayerCacheEntry?.error
+      const eurotourLoadFailed = hasCurrentEurotour && currentEurotourEvents.some(event => {
+        const key = `${event.id}:${epbfCategoryForEvent(event)}`;
+        return !officialEventDetails.has(key) && (personalEurotourRetryCounts.get(key) || 0) >= 3;
+      });
+      const recentHtml = (officialCalendarState !== "ready" || (hasCurrentEurotour ? eurotourDrawPending : currentPlayerCheckPending)) && !displayedResult
+        ? `<div class="epbf-dashboard-empty" role="status" aria-live="polite">${safe(eurotourLoadFailed
+          ? ({nl:"Euro Tour-gegevens tijdelijk niet bereikbaar. Probeer Vernieuwen.",en:"Euro Tour data temporarily unavailable. Try Refresh.",fr:"Données Euro Tour indisponibles. Actualisez.",es:"Datos Euro Tour no disponibles. Actualiza.",de:"Euro Tour-Daten vorübergehend nicht verfügbar. Aktualisieren."}[currentLanguage] || "Euro Tour data unavailable")
+          : currentPlayerCacheEntry?.error && !hasCurrentEurotour
           ? `${({nl:"Laatste uitslag tijdelijk niet bereikbaar",en:"Latest result temporarily unavailable",fr:"Dernier résultat temporairement indisponible",es:"Último resultado temporalmente no disponible",de:"Letztes Ergebnis vorübergehend nicht verfügbar"}[currentLanguage] || "Latest result temporarily unavailable")} (${currentPlayerCacheEntry.error})`
           : ({nl:"Recentste wedstrijd ophalen…",en:"Loading latest match…",fr:"Chargement du dernier match…",es:"Cargando el último partido…",de:"Letztes Spiel wird geladen…"}[currentLanguage] || "Loading latest match…"))}</div>`
         : displayedResult ? `<button type="button" class="epbf-dashboard-match epbf-dashboard-match-button" data-player-event-matches="${playerId}:${eurotourResult ? "euro" : "champ"}:${Number(eurotourResult?.event?.id || displayedResult.match.eventId || displayedResult.match.__disciplineId || 0)}">
@@ -3531,6 +3559,10 @@ function isChampionshipOverview(event) {
           const key = `${event.id}:${epbfCategoryForEvent(event)}`;
           officialEventDetails.delete(key);
           officialEventFailures.delete(key);
+          personalEurotourRetryCounts.delete(key);
+          const retryTimer = personalEurotourRetryTimers.get(key);
+          if (retryTimer) clearTimeout(retryTimer);
+          personalEurotourRetryTimers.delete(key);
         }
         ensurePersonalEurotourDraws();
         refreshOfficialLive();
